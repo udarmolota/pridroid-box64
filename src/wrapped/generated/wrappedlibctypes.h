@@ -124,6 +124,7 @@ typedef int32_t (*iFpilpV_t)(void*, int32_t, intptr_t, void*, ...);
 typedef int32_t (*iFpuppp_t)(void*, uint32_t, void*, void*, void*);
 typedef int32_t (*iFpppLp_t)(void*, void*, void*, uintptr_t, void*);
 typedef intptr_t (*lFippLL_t)(int32_t, void*, void*, uintptr_t, uintptr_t);
+typedef uintptr_t (*LFppppp_t)(void*, void*, void*, void*, void*);
 typedef void* (*pFpLLiN_t)(void*, uintptr_t, uintptr_t, int32_t, ...);
 typedef void* (*pFppLLp_t)(void*, void*, uintptr_t, uintptr_t, void*);
 typedef void* (*pFpppLp_t)(void*, void*, void*, uintptr_t, void*);
@@ -164,6 +165,7 @@ typedef int32_t (*iFpLpD_t)(void*, uintptr_t, void*, double);
 	GO(_setjmp, iFp_t) \
 	GO(atexit, iFp_t) \
 	GO(getcontext, iFp_t) \
+	GO(iconv_close, iFp_t) \
 	GO(register_printf_type, iFp_t) \
 	GO(setcontext, iFp_t) \
 	GO(setjmp, iFp_t) \
@@ -252,6 +254,7 @@ typedef int32_t (*iFpLpD_t)(void*, uintptr_t, void*, double);
 	GO(backtrace_symbols, pFpi_t) \
 	GO(__libc_dlsym, pFpp_t) \
 	GO(__realpath_chk, pFpp_t) \
+	GO(iconv_open, pFpp_t) \
 	GO(realpath, pFpp_t) \
 	GO(fopen, SFpp_t) \
 	GO(fopen64, SFpp_t) \
@@ -413,6 +416,7 @@ typedef int32_t (*iFpLpD_t)(void*, uintptr_t, void*, double);
 	GO(__vswprintf_chk, iFpuppp_t) \
 	GO(getprotobyname_r, iFpppLp_t) \
 	GO(__readlinkat_chk, lFippLL_t) \
+	GO(iconv, LFppppp_t) \
 	GO(mremap, pFpLLiN_t) \
 	GO(bsearch, pFppLLp_t) \
 	GO(lfind, pFpppLp_t) \

@@ -63,6 +63,7 @@ extern int _nl_msg_cat_cntr __attribute__((weak));
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <error.h>
+#include <iconv.h>
 #undef LOG_INFO
 #undef LOG_DEBUG
 
@@ -2035,6 +2036,158 @@ static void qsort_r(void* base, size_t nmemb, size_t size, __compar_d_fn_t compa
     rd_qsort_ctx = saved;
 }
 #endif
+
+// --- iconv: work around implementations that stall on NUL bytes -------------------------------
+// bionic advances the input by mbrtoc32()'s return value, which is 0 for U+0000, so a NUL byte is
+// never consumed: it emits NUL forever, fills any output buffer, and returns E2BIG. Callers that
+// grow the buffer and retry (SDL2's SDL_iconv_string, fed strlen()+1 bytes by X11_SetWindowTitle)
+// then allocate until the process is OOM-killed. Seen on Prison Architect: the output buffer
+// doubling 0x6000 -> 0x30000000 (805 MB) before the kill, so the game never drew a first frame.
+//
+// Each descriptor is probed ONCE at iconv_open for two facts: whether it actually stalls on a NUL,
+// and how wide one character is in the target encoding. Probing, not name parsing: it measures the
+// property we care about instead of guessing from an alias (UTF-16 / UTF-16LE / UCS-2 / WCHAR_T,
+// case, //TRANSLIT and //IGNORE suffixes), it keeps the workaround away from UTF-16/UTF-32 SOURCES
+// where a zero byte is part of a character rather than a NUL (scanning bytes there would corrupt
+// data), and it makes the whole thing self-disabling on a healthy libc - including glibc, so no
+// #ifdef is needed, and a future fixed bionic switches it off on its own.
+#define RD_ICONV_SLOTS 64
+#define RD_ICONV_UNKNOWN 0                      // -> plain passthrough, never a guessed width
+typedef struct rd_iconv_s {
+    iconv_t cd;
+    int     unit;                               // target bytes per char, or RD_ICONV_UNKNOWN
+    int     stalls;                             // 1 = this descriptor exhibits the NUL stall
+} rd_iconv_t;
+static rd_iconv_t rd_iconv_tab[RD_ICONV_SLOTS];
+static pthread_mutex_t rd_iconv_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Does this descriptor fail to consume a NUL byte? (probe #1)
+static int rd_iconv_probe_stall(iconv_t cd)
+{
+    char in[1] = {0}, out[64];
+    char *pin = in, *pout = out;
+    size_t inleft = 1, outleft = sizeof(out);
+    iconv(cd, &pin, &inleft, &pout, &outleft);
+    int stalls = (inleft == 1);                 // nothing consumed => the bug
+    iconv(cd, NULL, NULL, NULL, NULL);          // reset the conversion state after the probe
+    return stalls;
+}
+
+// How many bytes does one character occupy in the target encoding? (probe #2)
+static int rd_iconv_probe_unit(iconv_t cd)
+{
+    char in[1] = {'A'}, out[16];
+    char *pin = in, *pout = out;
+    size_t inleft = 1, outleft = sizeof(out);
+    size_t r = iconv(cd, &pin, &inleft, &pout, &outleft);
+    int unit = RD_ICONV_UNKNOWN;
+    if (r != (size_t)-1 && inleft == 0) {
+        int n = (int)(sizeof(out) - outleft);
+        if (n >= 1 && n <= 8) unit = n;
+    }
+    iconv(cd, NULL, NULL, NULL, NULL);
+    return unit;
+}
+
+static void rd_iconv_remember(iconv_t cd, int unit, int stalls)
+{
+    static int warned = 0;
+    pthread_mutex_lock(&rd_iconv_lock);
+    for (int i = 0; i < RD_ICONV_SLOTS; ++i)
+        if (!rd_iconv_tab[i].cd) {
+            rd_iconv_tab[i].cd = cd;
+            rd_iconv_tab[i].unit = unit;
+            rd_iconv_tab[i].stalls = stalls;
+            pthread_mutex_unlock(&rd_iconv_lock);
+            return;
+        }
+    int first = !warned; warned = 1;
+    pthread_mutex_unlock(&rd_iconv_lock);
+    if (first)
+        printf_log(LOG_NONE, "Warning: more than %d live iconv descriptors - the NUL workaround "
+                             "is off for the extra ones (they pass through unchanged)\n",
+                   RD_ICONV_SLOTS);
+}
+
+static void rd_iconv_forget(iconv_t cd)
+{
+    pthread_mutex_lock(&rd_iconv_lock);
+    for (int i = 0; i < RD_ICONV_SLOTS; ++i)
+        if (rd_iconv_tab[i].cd == cd) { rd_iconv_tab[i].cd = 0; break; }
+    pthread_mutex_unlock(&rd_iconv_lock);
+}
+
+// Returns the target width only when the workaround must run; 0 means "pass through".
+static int rd_iconv_lookup(iconv_t cd)
+{
+    int unit = RD_ICONV_UNKNOWN;
+    pthread_mutex_lock(&rd_iconv_lock);
+    for (int i = 0; i < RD_ICONV_SLOTS; ++i)
+        if (rd_iconv_tab[i].cd == cd) {
+            if (rd_iconv_tab[i].stalls) unit = rd_iconv_tab[i].unit;
+            break;
+        }
+    pthread_mutex_unlock(&rd_iconv_lock);
+    return unit;
+}
+
+EXPORT void* my_iconv_open(x64emu_t* emu, void* tocode, void* fromcode)
+{
+    (void)emu;
+    iconv_t cd = iconv_open((const char*)tocode, (const char*)fromcode);
+    if (cd != (iconv_t)-1) {
+        int stalls = rd_iconv_probe_stall(cd);
+        rd_iconv_remember(cd, stalls ? rd_iconv_probe_unit(cd) : RD_ICONV_UNKNOWN, stalls);
+    }
+    return (void*)cd;
+}
+
+EXPORT int my_iconv_close(x64emu_t* emu, void* cd)
+{
+    (void)emu;
+    rd_iconv_forget((iconv_t)cd);
+    return iconv_close((iconv_t)cd);
+}
+
+EXPORT size_t my_iconv(x64emu_t* emu, void* cd, char** inbuf, size_t* inbytesleft,
+                       char** outbuf, size_t* outbytesleft)
+{
+    (void)emu;
+    int unit = rd_iconv_lookup((iconv_t)cd);
+    // Not affected, unknown, or the state-reset/flush form: hand it straight over, untouched.
+    if (unit == RD_ICONV_UNKNOWN || !inbuf || !*inbuf || !inbytesleft)
+        return iconv((iconv_t)cd, inbuf, inbytesleft, outbuf, outbytesleft);
+
+    // Only reached for descriptors proven to stall, i.e. byte-oriented sources, where a 0x00 byte
+    // really is a NUL character and stepping one byte is correct.
+    size_t total = 0;
+    while (*inbytesleft) {
+        size_t run = 0;
+        while (run < *inbytesleft && (*inbuf)[run] != '\0') ++run;
+
+        if (run) {                                  // the NUL-free part: the library handles it
+            size_t saved = *inbytesleft;
+            *inbytesleft = run;
+            size_t r = iconv((iconv_t)cd, inbuf, inbytesleft, outbuf, outbytesleft);
+            size_t consumed = run - *inbytesleft;
+            *inbytesleft = saved - consumed;        // restore the true remainder
+            if (r == (size_t)-1) return r;          // errno already set by the library
+            total += r;
+            if (consumed < run) return total;       // partial: let the caller drive
+        }
+        if (!*inbytesleft) break;
+
+        if (!outbuf || !*outbuf || !outbytesleft || *outbytesleft < (size_t)unit) {
+            errno = E2BIG;                          // genuinely out of room, at a NUL
+            return (size_t)-1;
+        }
+        memset(*outbuf, 0, unit);                   // emit the NUL ourselves, in target width
+        *outbuf += unit;  *outbytesleft -= unit;
+        *inbuf  += 1;     *inbytesleft  -= 1;
+    }
+    return total;
+}
+// --- end iconv NUL workaround -----------------------------------------------------------------
 
 typedef struct compare_r_s {
     x64emu_t* emu;

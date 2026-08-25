@@ -57,6 +57,58 @@ void* my__IO_2_1_stdout_ = (void*)3;
 
 uintptr_t pltResolver64 = ~0LL;
 
+/*
+ * PriDroid keeps Prison Architect's own x86_64 SDL2 emulated: replacing it with
+ * the host SDL wrapper breaks the game's dynamic SDL entry points.  The Android
+ * controls, however, already produce complete guest-layout SDL_Event records in
+ * librimdroid.so.  Interpose only the executable's SDL_PollEvent import so those
+ * records can be consumed before falling through to the real guest SDL queue.
+ *
+ * This is deliberately scoped to PrisonArchitect.x86_64.  Other Box64 guests,
+ * including RimWorld, retain their normal symbol resolution and SDL wrappers.
+ */
+extern __attribute__((weak)) int rd_input_poll(unsigned char* out56);
+static uintptr_t pridroid_guest_SDL_PollEvent = 0;
+static uintptr_t pridroid_SDL_PollEvent_bridge = 0;
+
+static int pridroid_SDL_PollEvent(void* event)
+{
+    if(event && rd_input_poll && rd_input_poll((unsigned char*)event)) {
+        static unsigned int delivered = 0;
+        if(delivered++ < 64) {
+            uint32_t type = 0;
+            uint32_t scancode = 0;
+            memcpy(&type, (unsigned char*)event, sizeof(type));
+            memcpy(&scancode, (unsigned char*)event + 16, sizeof(scancode));
+            printf_log(LOG_NONE, "PRIDROID INPUT: delivered SDL event type=0x%x scancode=%u\n",
+                type, scancode);
+        }
+        return 1;
+    }
+    if(pridroid_guest_SDL_PollEvent)
+        return (int)RunFunctionFmt(pridroid_guest_SDL_PollEvent, "p", event);
+    return 0;
+}
+
+static uintptr_t pridroid_interpose_sdl_poll(elfheader_t* head, const char* symname, uintptr_t target)
+{
+    if(!target || !head || !head->name || !symname
+      || strcmp(symname, "SDL_PollEvent")
+      || !strstr(head->name, "PrisonArchitect"))
+        return target;
+
+    if(!pridroid_guest_SDL_PollEvent)
+        pridroid_guest_SDL_PollEvent = target;
+    if(!pridroid_SDL_PollEvent_bridge)
+        pridroid_SDL_PollEvent_bridge = AddBridge(my_context->system, iFp,
+            pridroid_SDL_PollEvent, 0, "PriDroid_SDL_PollEvent");
+
+    printf_log(LOG_NONE, "PRIDROID INPUT: %s SDL_PollEvent guest=%p bridge=%p ring=%s\n",
+        head->name, (void*)pridroid_guest_SDL_PollEvent,
+        (void*)pridroid_SDL_PollEvent_bridge, rd_input_poll ? "ready" : "missing");
+    return pridroid_SDL_PollEvent_bridge;
+}
+
 // return the index of header (-1 if it doesn't exist)
 static int getElfIndex(box64context_t* ctx, elfheader_t* head) {
     for (int i=0; i<ctx->elfsize; ++i)
@@ -763,6 +815,7 @@ static int RelocateElfRELA(lib_t *maplib, lib_t *local_maplib, int bindnow, int 
                 }
                 break;
             case R_X86_64_GLOB_DAT:
+                offs = pridroid_interpose_sdl_poll(head, symname, offs);
                 if((global = GetSymbolStartEnd(my_context->globdata, symname, &globoffs, &globend, version, vername, 1, veropt))) {
                     globp = (uint64_t*)globoffs;
                     printf_dump(LOG_NEVER, "Apply %s R_X86_64_GLOB_DAT with R_X86_64_COPY @%p/%p (%p/%p -> %p/%p) size=%zd on sym=%s (%sver=%d/%s) \n",
@@ -786,6 +839,7 @@ static int RelocateElfRELA(lib_t *maplib, lib_t *local_maplib, int bindnow, int 
                 }
                 break;
             case R_X86_64_JUMP_SLOT:
+                offs = pridroid_interpose_sdl_poll(head, symname, offs);
                 // apply immediatly for gobject closure marshal or for LOCAL binding. Also, apply immediatly if it doesn't jump in the got
                 tmp = (uintptr_t)(*p);
                 if (bind==STB_LOCAL
@@ -2180,6 +2234,7 @@ EXPORT void PltResolver64(x64emu_t* emu)
             printf_dump(LOG_DEBUG, "            Indirect function, will call the resolver now at %p\n", (void*)offs);
             offs = RunFunction(offs, 0);
         }
+        offs = pridroid_interpose_sdl_poll(h, symname, offs);
         offs = (uintptr_t)getAlternate((void*)offs);
 
         if(p) {

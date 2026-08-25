@@ -1,3 +1,13 @@
+> ### This is a fork
+>
+> **pridroid-box64** is a fork of [ptitSeb/box64](https://github.com/ptitSeb/box64), carrying the
+> changes [PriDroid](https://github.com/udarmolota/pridroid) needs to run Prison Architect on
+> Android — and, before it, the ones [RimDroid](https://github.com/udarmolota/rimdroid) needed for
+> RimWorld, from which this fork descends.
+>
+> All credit for box64 itself belongs to ptitSeb and its contributors. The upstream README follows
+> unchanged.
+
 ![Official logo](docs/img/Box64Logo.png "Official Logo")
 
 # Box64: Linux Userspace x86-64 Emulator with a Twist

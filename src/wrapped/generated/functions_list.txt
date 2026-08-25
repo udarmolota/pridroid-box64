@@ -2849,6 +2849,7 @@
 #() LFEpuppp
 #() LFEpLppu
 #() LFEppppu
+#() LFEppppp
 #() LFpipipi
 #() LFpuuupL
 #() LFplplpl
@@ -5489,6 +5490,7 @@ wrappedlibc:
   - _setjmp
   - atexit
   - getcontext
+  - iconv_close
   - register_printf_type
   - setcontext
   - setjmp
@@ -5605,6 +5607,7 @@ wrappedlibc:
 - pFpp:
   - __libc_dlsym
   - __realpath_chk
+  - iconv_open
   - realpath
 - SFpp:
   - fopen
@@ -5847,6 +5850,8 @@ wrappedlibc:
   - getprotobyname_r
 - lFippLL:
   - __readlinkat_chk
+- LFppppp:
+  - iconv
 - pFpLLiN:
   - mremap
 - pFppLLp:

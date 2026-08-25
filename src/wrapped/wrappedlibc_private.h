@@ -803,9 +803,9 @@ GO(host2netname, iFppp)
 GO(hstrerror, pFi)
 GO(htonl, uFu)
 GO(htons, WFW)
-GO(iconv, LFppppp)
-GO(iconv_close, iFp)
-GO(iconv_open, pFpp)
+GOM(iconv, LFEppppp)      //%% bionic stalls on NUL - see my_iconv in wrappedlibc.c
+GOM(iconv_close, iFEp)    //%%
+GOM(iconv_open, pFEpp)    //%%
 //GO(__idna_from_dns_encoding, 
 //GO(__idna_to_dns_encoding, 
 GOW(if_freenameindex, vFp)

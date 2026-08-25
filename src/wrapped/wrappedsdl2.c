@@ -50,6 +50,40 @@ extern __attribute__((weak)) void* g_zfa_handle;
 // test). A miss means the symbol genuinely is absent → the GetProcAddress wrapper
 // falls back to its zeroing/no-op stubs, same as for ZFA.
 extern __attribute__((weak)) void* g_osmesa_handle;
+
+// Mesa 4.3 compatibility contexts implement framebuffer objects in core, but
+// old games using GLee may request the original EXT entry-point spellings.  The
+// EXT_framebuffer_object functions below are ABI- and semantics-compatible with
+// their core counterparts.  Keep this aliasing in the resolver (rather than in
+// game code) so both glXGetProcAddress and SDL_GL_GetProcAddress receive a real
+// host function even when libzfa/Mesa exports only the core name.
+static const char* rd_gl_legacy_core_alias(const char* name)
+{
+    static const struct { const char* legacy; const char* core; } aliases[] = {
+        {"glBindFramebufferEXT", "glBindFramebuffer"},
+        {"glBindRenderbufferEXT", "glBindRenderbuffer"},
+        {"glCheckFramebufferStatusEXT", "glCheckFramebufferStatus"},
+        {"glDeleteFramebuffersEXT", "glDeleteFramebuffers"},
+        {"glDeleteRenderbuffersEXT", "glDeleteRenderbuffers"},
+        {"glFramebufferRenderbufferEXT", "glFramebufferRenderbuffer"},
+        {"glFramebufferTexture1DEXT", "glFramebufferTexture1D"},
+        {"glFramebufferTexture2DEXT", "glFramebufferTexture2D"},
+        {"glFramebufferTexture3DEXT", "glFramebufferTexture3D"},
+        {"glGenFramebuffersEXT", "glGenFramebuffers"},
+        {"glGenRenderbuffersEXT", "glGenRenderbuffers"},
+        {"glGenerateMipmapEXT", "glGenerateMipmap"},
+        {"glGetFramebufferAttachmentParameterivEXT", "glGetFramebufferAttachmentParameteriv"},
+        {"glGetRenderbufferParameterivEXT", "glGetRenderbufferParameteriv"},
+        {"glIsFramebufferEXT", "glIsFramebuffer"},
+        {"glIsRenderbufferEXT", "glIsRenderbuffer"},
+        {"glRenderbufferStorageEXT", "glRenderbufferStorage"},
+    };
+    for (size_t i = 0; i < sizeof(aliases) / sizeof(aliases[0]); ++i)
+        if (!strcmp(name, aliases[i].legacy))
+            return aliases[i].core;
+    return NULL;
+}
+
 static void* rimdroid_gl_proc_resolver(const char* name)
 {
     if (&g_osmesa_handle && g_osmesa_handle) {
@@ -74,6 +108,15 @@ static void* rimdroid_gl_proc_resolver(const char* name)
         if (egl_gpa) {
             void* q = egl_gpa(name);
             if (q) printf_log(LOG_NONE, "rimdroid_gl_proc_resolver: '%s' via eglGetProcAddress => %p\n", name, q);
+            if (q) return q;
+        }
+        const char* core_name = rd_gl_legacy_core_alias(name);
+        if (core_name) {
+            void* q = dlsym(g_zfa_handle, core_name);
+            if (!q && egl_gpa) q = egl_gpa(core_name);
+            if (q)
+                printf_log(LOG_NONE, "RIMDROID GL compatibility alias: '%s' -> '%s' => %p\n",
+                           name, core_name, q);
             return q;
         }
         return NULL;
