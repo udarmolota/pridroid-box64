@@ -2914,7 +2914,7 @@ uintptr_t dynarec64_00(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     *ok = 0;
                     *need_epilog = 1;
                 } else if(!BridgeFncSettled(addr+8)) {
-                    // RimDroid: w!=0 but the slot's fnc is still 0 even after resyncing on
+                    // PriDroid: w!=0 but the slot's fnc is still 0 even after resyncing on
                     // mutex_bridge => a genuinely broken slot. NEVER fall through to the
                     // emission below: call_n dereferences fnc here, at COMPILE time, and would
                     // bake `BLR 0` into this block permanently (SIGSEGV, native pc=0, guest RIP
@@ -2931,7 +2931,7 @@ uintptr_t dynarec64_00(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     static int rd_bridge0_n = 0;
                     if(rd_bridge0_n < 16) {
                         rd_bridge0_n++;
-                        printf_log(LOG_NONE, "RIMDROID BRIDGE0 slot=%p w=%p fnc=0 ip=%p (%s) — block ended, no BLR 0 emitted\n",
+                        printf_log(LOG_NONE, "PRIDROID BRIDGE0 slot=%p w=%p fnc=0 ip=%p (%s) — block ended, no BLR 0 emitted\n",
                             (void*)(addr-3), *(void**)addr, (void*)ip, GetBridgeName((void*)ip)?:"???");
                     }
                     DEFAULT;

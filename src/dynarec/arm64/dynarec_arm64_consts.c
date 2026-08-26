@@ -40,7 +40,7 @@ static const double subaddpd[2] = {1., -1.};
 void PrintTrace(x64emu_t* emu, uintptr_t ip, int b)
 {
     (void)ip; (void)b;
-    // RimDroid DISPATCH ENTRY-GUARD: at AnythingToStrip's entry (rd_guard_addr), dump the caller = the dispatch
+    // PriDroid DISPATCH ENTRY-GUARD: at AnythingToStrip's entry (rd_guard_addr), dump the caller = the dispatch
     // call-site. R_RSP points at the return address (just pushed by the call); the call instruction is right
     // before it. Tells us whether 0x3C0 is baked into a JIT'd `call [reg+0x3C0]` (mechanism A) or it's an IMT
     // path (mechanism B). One-shot-ish (capped); returns early to skip the [RD-T] flood.
@@ -83,7 +83,7 @@ void PrintTrace(x64emu_t* emu, uintptr_t ip, int b)
             return;
         }
     }
-    // RimDroid ARG-TRACE: arm via env RIMDROID_TRACE_LO/HI = mono_class_interface_offset's ENTRY
+    // PriDroid ARG-TRACE: arm via env PRIDROID_TRACE_LO/HI = mono_class_interface_offset's ENTRY
     // (0x3f04174029-0x3f0417402a). At entry, SysV args: RDI=klass, RSI=target interface. When the klass is
     // Pawn, dump the TARGET interface (name + interface_id) + the caller return addr. Answers: is the WRONG
     // interface (IStrippable id=2273) passed in (→ caller bug), or IExposable (id=2269) being looked up but
@@ -105,7 +105,7 @@ void PrintTrace(x64emu_t* emu, uintptr_t ip, int b)
         }
         #undef RD_IN
     }
-    // RimDroid save-bug level-1/2 PROBE (one-shot). Armed only on the Pawn ExposeData thunk's `cmp` (by
+    // PriDroid save-bug level-1/2 PROBE (one-shot). Armed only on the Pawn ExposeData thunk's `cmp` (by
     // FillBlock64). RDI = this Pawn; r10 = IMT cookie (= ExposeData MonoMethod*). Compute the TRUE ExposeData
     // vtable cell via Mono offsets (read-only) and compare to the thunk's baked impl-slot:
     //   MonoObject+0 = MonoVTable ; MonoVTable+0 = MonoClass ; MonoVTable+0x40 = vtable[] cells
@@ -200,14 +200,14 @@ void PrintTrace(x64emu_t* emu, uintptr_t ip, int b)
         }
     }
     // [RD] save-bug writer hunt. Two modes:
-    //  - range mode (RIMDROID_TRACE_LO/HI set, RIMDROID_WATCH_ADDR unset): log every traced insn (default).
-    //  - watch mode (RIMDROID_WATCH_ADDR set): log ONLY when some guest reg holds (watch_addr - watch_disp),
+    //  - range mode (PRIDROID_TRACE_LO/HI set, PRIDROID_WATCH_ADDR unset): log every traced insn (default).
+    //  - watch mode (PRIDROID_WATCH_ADDR set): log ONLY when some guest reg holds (watch_addr - watch_disp),
     //    i.e. this insn addresses the watched slot via [reg+disp]. Catches both the reader (RIP 0x...56c9d)
     //    and the WRITER (other RIP) of MonoClass+0x278 live, with no ring buffer / NRE hook. Distinguish by RIP.
     static int    rd_w_init = 0;
     static uintptr_t rd_w_addr = 0, rd_w_disp = 0x278;
     if(!rd_w_init){ rd_w_init = 1;
-        char* a = getenv("RIMDROID_WATCH_ADDR"); char* d = getenv("RIMDROID_WATCH_DISP");
+        char* a = getenv("PRIDROID_WATCH_ADDR"); char* d = getenv("PRIDROID_WATCH_DISP");
         if(a) rd_w_addr = (uintptr_t)strtoull(a, NULL, 0);
         if(d) rd_w_disp = (uintptr_t)strtoull(d, NULL, 0);
     }

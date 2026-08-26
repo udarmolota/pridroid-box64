@@ -1,4 +1,4 @@
-// RimDroid: S3TC->ETC2 transcode encoder. Split out of wrappedsdl2.c (2026-08-12) so THIS file can
+// PriDroid: S3TC->ETC2 transcode encoder. Split out of wrappedsdl2.c (2026-08-12) so THIS file can
 // be compiled -O2 (see CMakeLists: per-file COMPILE_OPTIONS) while box64's Android build keeps its
 // safe optimization level elsewhere — the encoder is pure arithmetic with no dynarec/emulation
 // interplay, so fast codegen is risk-free here. At -O0 the full-search encoder turned the RimWorld
@@ -12,7 +12,7 @@
 //
 // Formats: ETC1-subset color (individual/differential modes; no T/H/planar — quality plenty for
 // sprites) + EAC alpha. Same bytes-per-block as the DXT source: memory parity restored on GPUs
-// without S3TC (Mali & friends). RimDroid-fork-only, never for upstream (box64 AGENTS.md).
+// without S3TC (Mali & friends). PriDroid-fork-only, never for upstream (box64 AGENTS.md).
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>

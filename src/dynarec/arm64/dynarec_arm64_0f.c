@@ -58,7 +58,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
     MAYUSE(j64);
     MAYUSE(cacheupd);
 
-    /* RimDroid audio diagnostic (see dynarec_arm64_660f.c). Force suspect FLOAT-domain interleave/shuffle
+    /* PriDroid audio diagnostic (see dynarec_arm64_660f.c). Force suspect FLOAT-domain interleave/shuffle
      * and MMX data-movement opcodes to the interpreter, to find which is miscompiled (FMOD float-to-int16
      * stereo interleave -> white noise with correct magnitudes). Toggle via env, no rebuild.
      * RD_NODYN_FLOATSHUF = movlps/movhlps/unpcklps/unpckhps/movhps/movlhps/shufps (0x12-0x17, 0xC6).

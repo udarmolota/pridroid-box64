@@ -1,9 +1,9 @@
 #ifndef RD_ETC2_H
 #define RD_ETC2_H
-// RimDroid: S3TC->ETC2 transcode encoder (see rd_etc2.c). Lives in its OWN translation unit so it
+// PriDroid: S3TC->ETC2 transcode encoder (see rd_etc2.c). Lives in its OWN translation unit so it
 // can be compiled -O2 while the rest of box64's Android build stays at the safe optimization level
 // — a full-search block encoder at -O0 turned the RimWorld 1.6 atlas bake into a 10-minute load
-// that Android's app watchdog then SIGKILLed. RimDroid-fork-only, never for upstream.
+// that Android's app watchdog then SIGKILLed. PriDroid-fork-only, never for upstream.
 #include <stdint.h>
 #include <stddef.h>
 

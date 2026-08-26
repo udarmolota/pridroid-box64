@@ -24,7 +24,7 @@ typedef struct my_tls_s {
 EXPORT void* my___tls_get_addr(x64emu_t* emu, void* p)
 {
     my_tls_t *t = (my_tls_t*)p;
-    // RimDroid: this wrapper races AddElfHeader/RemoveElfHeader — they publish elfs[]/elfsize
+    // PriDroid: this wrapper races AddElfHeader/RemoveElfHeader — they publish elfs[]/elfsize
     // from a dlopen'ing thread while other guest threads resolve TLS here. Acquire-load the
     // size, the array and the slot (paired with AddElfHeader's release stores): with the old
     // plain reads an ARM reader could see the bumped elfsize but a still-NULL slot, and since
@@ -42,7 +42,7 @@ EXPORT void* my___tls_get_addr(x64emu_t* emu, void* p)
         static int rd_tlsbad_n = 0;
         if (rd_tlsbad_n < 16) {
             rd_tlsbad_n++;
-            printf_log(LOG_NONE, "RIMDROID TLSBAD p=%p i=0x%lx o=0x%lx elfsize=%d rip=%p(%s)\n",
+            printf_log(LOG_NONE, "PRIDROID TLSBAD p=%p i=0x%lx o=0x%lx elfsize=%d rip=%p(%s)\n",
                 p, p_readable ? t->i : 0, p_readable ? t->o : 0,
                 my_context->elfsize, (void*)R_RIP, getAddrFunctionName(R_RIP));
             fflush(NULL);

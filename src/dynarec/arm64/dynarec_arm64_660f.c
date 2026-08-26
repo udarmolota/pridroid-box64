@@ -49,7 +49,7 @@ uintptr_t dynarec64_660F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int n
     static const int8_t round_round[] = { 0, 2, 1, 3};
     #endif
 
-    /* RimDroid audio diagnostic: force suspect SIMD data-movement opcodes to the INTERPRETER (DEFAULT bails
+    /* PriDroid audio diagnostic: force suspect SIMD data-movement opcodes to the INTERPRETER (DEFAULT bails
      * the block, interpreting this instruction). FMOD's float-to-int16 stereo-interleave produces white
      * noise under dynarec (samples scrambled, magnitudes correct) - bisect which family is miscompiled by
      * toggling these env vars (no rebuild). RD_NODYN_UNPACK = punpck and pack (0x60-0x6D); RD_NODYN_PSHUF = pshufd. */

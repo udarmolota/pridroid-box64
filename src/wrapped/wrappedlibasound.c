@@ -181,7 +181,7 @@ static void* findMixerEventFct(void* fct)
 
 EXPORT long my_snd_pcm_writei(x64emu_t *emu, void *pcm, void *buffer, unsigned long size)
 {
-    /* RimDroid audio diagnostic: log the GUEST return address = the FMOD function that calls
+    /* PriDroid audio diagnostic: log the GUEST return address = the FMOD function that calls
      * snd_pcm_writei (its float->int16 convert/feed loop). Use it to set BOX64_NODYNAREC over that range,
      * forcing the (mis-compiled) convert to the interpreter for clean audio. Logged once, to stderr
      * (folds into Player.log). Then forward to the native shim so audio keeps working. */

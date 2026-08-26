@@ -61,7 +61,7 @@ uintptr_t pltResolver64 = ~0LL;
  * PriDroid keeps Prison Architect's own x86_64 SDL2 emulated: replacing it with
  * the host SDL wrapper breaks the game's dynamic SDL entry points.  The Android
  * controls, however, already produce complete guest-layout SDL_Event records in
- * librimdroid.so.  Interpose only the executable's SDL_PollEvent import so those
+ * libpridroid.so.  Interpose only the executable's SDL_PollEvent import so those
  * records can be consumed before falling through to the real guest SDL queue.
  *
  * This is deliberately scoped to PrisonArchitect.x86_64.  Other Box64 guests,
@@ -272,7 +272,7 @@ int AllocLoadElfMemory32(box64context_t* context, elfheader_t* head, int mainbin
 #else
  ;
 #endif
-// RimDroid: when a fixed-address image cannot be placed, say WHAT already occupies the range. On Android
+// PriDroid: when a fixed-address image cannot be placed, say WHAT already occupies the range. On Android
 // a non-root app cannot read the system tombstone, so without this an EEXIST here is a dead end.
 static void rd_log_maps_overlapping(uintptr_t start, uintptr_t end)
 {
@@ -294,11 +294,11 @@ static void rd_log_maps_overlapping(uintptr_t start, uintptr_t end)
 }
 
 // The launcher can pre-reserve the low range a non-PIE game needs, before anything else in the process
-// (notably the GPU driver) can take it, and publish it as RIMDROID_ELF_RESERVE="0xBASE-0xEND". Mapping
+// (notably the GPU driver) can take it, and publish it as PRIDROID_ELF_RESERVE="0xBASE-0xEND". Mapping
 // over that with MAP_FIXED only replaces our own PROT_NONE placeholder, so it is safe.
 static int rd_range_is_reserved(uintptr_t start, uintptr_t end)
 {
-    const char* env = getenv("RIMDROID_ELF_RESERVE");
+    const char* env = getenv("PRIDROID_ELF_RESERVE");
     unsigned long b = 0, e = 0;
     if(!env || !*env) return 0;
     if(sscanf(env, "%lx-%lx", &b, &e) != 2) return 0;

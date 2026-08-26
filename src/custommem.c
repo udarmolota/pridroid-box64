@@ -2541,7 +2541,7 @@ typedef union hotpage_s {
     uint64_t    x;
 } hotpage_t;
 #define HOTPAGE_MAX ((1<<28)-1)
-// RimDroid: 32 slots / 64 ticks drown under Mono's JIT+GC SMC storm (logs show constant
+// PriDroid: 32 slots / 64 ticks drown under Mono's JIT+GC SMC storm (logs show constant
 // "No more live Hotpage slot ... recycling" on Dimensity/Mali devices). A page that loses its
 // interpreter grace while Mono is STILL writing it (JIT back-patching call sites = bursts of
 // non-atomic multi-byte writes) gets a dynablock compiled from torn bytes → garbage code that
@@ -2612,7 +2612,7 @@ int IdxOldestHotPage(uintptr_t page)
         }
     }
     dynarec_log(LOG_INFO, "%04d|No more live Hotpage slot for %p, recycling idx=%d (%p)\n", GetTID(), (void*)(page<<12), best_idx, (void*)(uintptr_t)(hotpage[best_idx].addr<<12));
-    // RimDroid note: an earlier revision NEVERCLEAN-marked the evicted page here. REMOVED — always_test
+    // PriDroid note: an earlier revision NEVERCLEAN-marked the evicted page here. REMOVED — always_test
     // pages execute mid-write code without any trap (that exact mechanism broke mod scanning when
     // applied to Mono trampolines). With 128 slots eviction is rare anyway (tester logs: zero).
     return best_idx;
@@ -2960,13 +2960,13 @@ void* find32bitBlock(size_t size)
 }
 void* find47bitBlock(size_t size)
 {
-    // [RD] reproduce the bad layout on demand: RIMDROID_GUEST_HIGH=1 forces this no-hint guest allocator
+    // [RD] reproduce the bad layout on demand: PRIDROID_GUEST_HIGH=1 forces this no-hint guest allocator
     // (where Mono's heap/metadata land) to search from near the 39-bit top → blocks land ~0x79xx, the
     // high zone that triggers the IMT dispatch corruption (ExposeData->AnythingToStrip). Off by default.
-    // (The fix side, RIMDROID_GUEST_LOW, is handled inside find47bitBlockNearHint.)
+    // (The fix side, PRIDROID_GUEST_LOW, is handled inside find47bitBlockNearHint.)
     {
         static int rd_ghigh = -1;
-        if(rd_ghigh==-1) rd_ghigh = getenv("RIMDROID_GUEST_HIGH")?1:0;
+        if(rd_ghigh==-1) rd_ghigh = getenv("PRIDROID_GUEST_HIGH")?1:0;
         if(rd_ghigh) {
             void* r = find47bitBlockNearHint((void*)0x7800000000LL, size, 0);
             if(r) return r;
@@ -2991,19 +2991,19 @@ void* find47bitBlockNearHint(void* hint, size_t size, uintptr_t mask)
     uintptr_t bend = 0;
     uintptr_t cur = (uintptr_t)hint;
     if(!mask) mask = 0xffff;
-    // RimDroid: cap the scan at the device's real addressable VA. Devices without 48-bit VA have only
+    // PriDroid: cap the scan at the device's real addressable VA. Devices without 48-bit VA have only
     // ~39 bits (2^39 = 0x8000000000); the stock 48-bit upper bound (0x800000000000) lets this hand back
     // a hint ABOVE what the kernel can map → guest mmap fails → Mono OOM (black screen on e.g. SD7+Gen2).
     // 48-bit devices keep the original bound, so their behaviour is unchanged.
     uintptr_t scan_limit = have48bits ? 0x800000000000LL : 0x8000000000LL;
     // [RD] guest-heap layout fix for the IMT dispatch corruption. When Mono's guest heap lands HIGH
     // (~0x79xx, near the 39-bit top) box64 mis-resolves the interface call (ExposeData->AnythingToStrip);
-    // LOW (~0x1xx) is safe. RIMDROID_GUEST_LOW=1 caps LOW-hint searches (the Mono-heap path via
+    // LOW (~0x1xx) is safe. PRIDROID_GUEST_LOW=1 caps LOW-hint searches (the Mono-heap path via
     // find47bitBlock, hint=0x60000000) below the bad zone, so big allocations stay in the good range.
     // High-hint searches (the ELF path, hint=0x3f..) are left alone so libmono still loads where expected.
     {
         static int rd_glow = -1;
-        if(rd_glow==-1) rd_glow = getenv("RIMDROID_GUEST_LOW")?1:0;
+        if(rd_glow==-1) rd_glow = getenv("PRIDROID_GUEST_LOW")?1:0;
         if(rd_glow && cur < 0x2000000000LL) scan_limit = 0x2000000000LL;
     }
     while(bend<scan_limit) {

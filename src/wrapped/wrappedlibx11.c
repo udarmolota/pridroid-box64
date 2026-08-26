@@ -1226,8 +1226,8 @@ static int rd_xlib_trace_enabled(void)
 {
     static int v = -1;
     if(v < 0) {
-        const char* e = getenv("RIMDROID_XPOLL_TRACE");
-        v = (!e || e[0] != '0') && getenv("RIMDROID_X11_SOCKET_DIR") ? 1 : 0;
+        const char* e = getenv("PRIDROID_XPOLL_TRACE");
+        v = (!e || e[0] != '0') && getenv("PRIDROID_X11_SOCKET_DIR") ? 1 : 0;
     }
     return v;
 }
@@ -1263,7 +1263,7 @@ static const char* rd_xevent_name(int type)
 static void rd_xlib_log_count(const char* name, unsigned long long n, void* dpy, int mode, int ret)
 {
     if(!rd_xlib_trace_enabled() || !rd_xlib_should_log(n, ret)) return;
-    printf_log(LOG_NONE, "RIMDROID: XLIB %s#%llu dpy=%p mode=%d ret=%d\n",
+    printf_log(LOG_NONE, "PRIDROID: XLIB %s#%llu dpy=%p mode=%d ret=%d\n",
                name, n, dpy, mode, ret);
 }
 
@@ -1271,7 +1271,7 @@ static void rd_xlib_log_event(const char* name, unsigned long long n, void* dpy,
 {
     if(!rd_xlib_trace_enabled() || !rd_xlib_should_log(n, ret)) return;
     int type = (ret == 0 && ev) ? *(int*)ev : -1;
-    printf_log(LOG_NONE, "RIMDROID: XLIB %s#%llu dpy=%p ret=%d event=%d(%s)\n",
+    printf_log(LOG_NONE, "PRIDROID: XLIB %s#%llu dpy=%p ret=%d event=%d(%s)\n",
                name, n, dpy, ret, type, rd_xevent_name(type));
 }
 

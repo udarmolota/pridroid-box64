@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
-#include <unistd.h>   // RimDroid [RD-DELTA] capture: access() for the file trigger
+#include <unistd.h>   // PriDroid [RD-DELTA] capture: access() for the file trigger
 
 #include "os.h"
 #include "debug.h"
@@ -421,7 +421,7 @@ dynablock_t* CreateEmptyBlock(uintptr_t addr, int is32bits, int is_new) {
     return block;
 }
 
-// RimDroid [RD-DELTA] capture helpers (save-bug box64 fix). Bounds-checked guest-memory dumps (every read
+// PriDroid [RD-DELTA] capture helpers (save-bug box64 fix). Bounds-checked guest-memory dumps (every read
 // guarded by getProtection_fast) used ONE-SHOT to recover the Pawn ExposeData IMT conflict-thunk + its
 // vtable neighbourhood, so the correct-slot DELTA can be computed offline. Inert unless armed by the
 // /sdcard/Download/rd_capture trigger (see FillBlock64). printf_log(LOG_NONE) => always written to the log.
@@ -439,11 +439,11 @@ static int rd_rd(uintptr_t p) {
 }
 
 // The save-bug FIX (locate Pawn, rd_imt_fix) runs by DEFAULT. The heavy/noisy DIAGNOSTICS (good-phase probe,
-// AnythingToStrip slot scan + entry-guard, thunk dumps, verbose logs) stay behind env RIMDROID_SAVEDIAG — they do
+// AnythingToStrip slot scan + entry-guard, thunk dumps, verbose logs) stay behind env PRIDROID_SAVEDIAG — they do
 // expensive jit_code_hash passes that made good-phase save-LOADS crawl. rd_diag_on() gates only the diagnostics.
-static int rd_diag_on(void) { static int v=-1; if(v<0) v = getenv("RIMDROID_SAVEDIAG")?1:0; return v; }
+static int rd_diag_on(void) { static int v=-1; if(v<0) v = getenv("PRIDROID_SAVEDIAG")?1:0; return v; }
 
-// RimDroid save-bug level-1/2 PROBE state. Set when the Pawn ExposeData conflict-thunk is detected at compile
+// PriDroid save-bug level-1/2 PROBE state. Set when the Pawn ExposeData conflict-thunk is detected at compile
 // (FillBlock64); consumed by the trace-emit in dynarec_native_pass.c and by PrintTrace in
 // dynarec_arm64_consts.c. PrintTrace fires once at the thunk's `cmp` (R_RIP==rd_probe_cmp_ip), where RDI = the
 // `this` Pawn, computes the TRUE ExposeData vtable cell via Mono offsets (read-only) and logs level-1 vs level-2.
@@ -453,7 +453,7 @@ static int rd_diag_on(void) { static int v=-1; if(v<0) v = getenv("RIMDROID_SAVE
 uintptr_t rd_probe_list[64]; int rd_probe_n = 0;
 uintptr_t rd_probe_method = 0;
 int rd_probe_done = 0;
-// RimDroid PAWN SAVE FIX (2026-06-25, AI-consensus): Pawn's ExposeData has NO detectable IMT conflict-thunk — its
+// PriDroid PAWN SAVE FIX (2026-06-25, AI-consensus): Pawn's ExposeData has NO detectable IMT conflict-thunk — its
 // mis-dispatch is a corrupted PLAIN vtable cell (pawn_vt+0x40+8*interface_offset(Pawn,IExposable) holds
 // AnythingToStrip's code). Find Pawn read-only WITHOUT a dispatch: scan jit_code_hash for any method whose
 // klass->name=="Pawn" -> pawn_klass; get its live MonoVTable via runtime_info (verified offsets: MonoClass+0xC8 =
@@ -649,12 +649,12 @@ static void rd_pawn_tick(void) {
     }
     rd_pawn_apply_fix();
 }
-// RimDroid TEST toggle (env RIMDROID_NO_SAVEFIX=1): disable the entire save-fix machinery (FillBlock thunk
+// PriDroid TEST toggle (env PRIDROID_NO_SAVEFIX=1): disable the entire save-fix machinery (FillBlock thunk
 // detector + rd_savefix_repair code-rewrites + rd_imt_fix). Used to confirm whether the save-fix's per-block
 // code rewriting is what causes the reduced-render flicker on loaded saves. Default OFF (the fix stays on).
 static int rd_savefix_off(void) {
     static int v = -1;
-    if(v < 0) v = getenv("RIMDROID_NO_SAVEFIX") ? 1 : 0;
+    if(v < 0) v = getenv("PRIDROID_NO_SAVEFIX") ? 1 : 0;
     return v;
 }
 static void rd_repair_pawn(uintptr_t domain, uintptr_t expose_itf) {
@@ -723,7 +723,7 @@ static void rd_repair_pawn(uintptr_t domain, uintptr_t expose_itf) {
     rd_pawn_apply_fix();   // fix immediately if it's already corrupted
 }
 
-// RimDroid SAVE FIX (2026-06-24, AI-consensus): class-agnostic compile-time repair of a corrupted IMT ExposeData
+// PriDroid SAVE FIX (2026-06-24, AI-consensus): class-agnostic compile-time repair of a corrupted IMT ExposeData
 // vtable cell. box64 mis-builds the IMT conflict-thunk so the ExposeData vtable cell holds AnythingToStrip's code
 // (a pointer INTO the thunk's own region, ~thunk+0x30) instead of the class's real ExposeData code -> objects
 // (esp. Verse.Pawn) serialize empty. Given the corrupt cell (impl_slot) + the ExposeData INTERFACE method, this
@@ -825,14 +825,14 @@ dynablock_t* FillBlock64(uintptr_t addr, int is32bits, int inst_max, int is_new,
         return NULL;
     }
 #endif
-    // RimDroid SAVE FIX (always-on, compile-time, class-agnostic). When an IMT ExposeData conflict-thunk compiles
+    // PriDroid SAVE FIX (always-on, compile-time, class-agnostic). When an IMT ExposeData conflict-thunk compiles
     // and its vtable cell is corrupted (the cell points INTO the thunk's own region = AnythingToStrip's code, the
     // deterministic box64 mis-build signature), repair the cell to the class's real ExposeData code. No trigger,
     // no runtime trace, no Mono calls. Per-block cost = a couple of byte compares; the heavy repair runs only on
     // the rare corrupted-conflict-thunk match (capped). Catches Pawn's thunk whenever it compiles.
     // The save-bug FIX runs by DEFAULT (cheap): the thunk detector locates Pawn from a corrupt container thunk,
     // then rd_pawn_tick()->rd_imt_fix() repairs the mis-built IMT slot. Only the heavy/noisy DIAGNOSTICS
-    // (firstkey logs, byte dumps, good-phase probe) are gated behind rd_diag_on() (env RIMDROID_SAVEDIAG) —
+    // (firstkey logs, byte dumps, good-phase probe) are gated behind rd_diag_on() (env PRIDROID_SAVEDIAG) —
     // those did the expensive passes that made good-phase save-LOADS crawl.
     if(!rd_savefix_off()) {
         rd_pawn_tick();   // THE FIX (rd_imt_fix); its own diagnostics are gated inside
@@ -879,7 +879,7 @@ dynablock_t* FillBlock64(uintptr_t addr, int is32bits, int inst_max, int is_new,
                                 } else if(rd_diag_on()) {
                                     // GOOD-PHASE PROBE (diagnostics only): cell NOT corrupt, but locate Pawn anyway so
                                     // the scan/guard can study a working dispatch. Expensive (this was the good-phase
-                                    // save-LOAD slowdown) → only when RIMDROID_SAVEDIAG is set. Not needed for the fix.
+                                    // save-LOAD slowdown) → only when PRIDROID_SAVEDIAG is set. Not needed for the fix.
                                     static int rd_gp_probe_n = 0;
                                     if(!rd_pawn_cell && !rd_pawn_done && rd_gp_probe_n < 64) {
                                         rd_gp_probe_n++;
@@ -1003,7 +1003,7 @@ dynablock_t* FillBlock64(uintptr_t addr, int is32bits, int inst_max, int is_new,
                 state = BUILD_ABORT_EMPTY;
                 continue;
             }
-            // RimDroid (gated by BOX64_RD_HOTPAGE_HARDEN): the stock check below covers only the FIRST
+            // PriDroid (gated by BOX64_RD_HOTPAGE_HARDEN): the stock check below covers only the FIRST
             // page — pass0 reads instruction bytes from TAIL pages that are not write-protected yet, so
             // a concurrent Mono JIT patch there is invisible, and the torn instruction BOUNDARIES are
             // never re-verified (passes 1-3 re-read final bytes at torn offsets → internally-consistent

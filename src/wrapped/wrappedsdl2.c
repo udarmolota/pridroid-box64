@@ -40,11 +40,11 @@ static uintptr_t g_real_sdl_gl_loadlibrary = 0;  // real static SDL_GL_LoadLibra
 // procaddr (my->SDL_GL_GetProcAddress) and crash (SIGSEGV @0x0) the moment
 // Unity starts loading OpenGL entry points after creating the GL context.
 static void* g_gl4es_host_handle = NULL;
-// For ZINK_ZFA: libzfa.so is loaded by rimdroid.c into the rimdroid namespace
+// For ZINK_ZFA: libzfa.so is loaded by pridroid.c into the pridroid namespace
 // (so Zink can reach the Vulkan loader/driver).  A plain dlopen() here would
 // fail to link those, so resolve GL entry points from that inherited handle.
 extern __attribute__((weak)) void* g_zfa_handle;
-// RD_SOFTPIPE: libOSMesa.so handle (set by rimdroid.c's rimdroid_init_osmesa).
+// RD_SOFTPIPE: libOSMesa.so handle (set by pridroid.c's pridroid_init_osmesa).
 // libOSMesa exports the full GL API as plain symbols, so a straight dlsym
 // resolves every entry point softpipe provides (proven by the Milestone 1 smoke
 // test). A miss means the symbol genuinely is absent → the GetProcAddress wrapper
@@ -84,7 +84,7 @@ static const char* rd_gl_legacy_core_alias(const char* name)
     return NULL;
 }
 
-static void* rimdroid_gl_proc_resolver(const char* name)
+static void* pridroid_gl_proc_resolver(const char* name)
 {
     if (&g_osmesa_handle && g_osmesa_handle) {
         return dlsym(g_osmesa_handle, name);
@@ -107,7 +107,7 @@ static void* rimdroid_gl_proc_resolver(const char* name)
         }
         if (egl_gpa) {
             void* q = egl_gpa(name);
-            if (q) printf_log(LOG_NONE, "rimdroid_gl_proc_resolver: '%s' via eglGetProcAddress => %p\n", name, q);
+            if (q) printf_log(LOG_NONE, "pridroid_gl_proc_resolver: '%s' via eglGetProcAddress => %p\n", name, q);
             if (q) return q;
         }
         const char* core_name = rd_gl_legacy_core_alias(name);
@@ -115,7 +115,7 @@ static void* rimdroid_gl_proc_resolver(const char* name)
             void* q = dlsym(g_zfa_handle, core_name);
             if (!q && egl_gpa) q = egl_gpa(core_name);
             if (q)
-                printf_log(LOG_NONE, "RIMDROID GL compatibility alias: '%s' -> '%s' => %p\n",
+                printf_log(LOG_NONE, "PRIDROID GL compatibility alias: '%s' -> '%s' => %p\n",
                            name, core_name, q);
             return q;
         }
@@ -127,7 +127,7 @@ static void* rimdroid_gl_proc_resolver(const char* name)
         if (!g_gl4es_host_handle && strcmp(libgl, "libgl4es.so") != 0)
             g_gl4es_host_handle = dlopen("libgl4es.so", RTLD_LAZY | RTLD_GLOBAL);
         if (!g_gl4es_host_handle)
-            printf_log(LOG_NONE, "rimdroid_gl_proc_resolver: cannot dlopen GL lib '%s' (%s)\n", libgl, dlerror());
+            printf_log(LOG_NONE, "pridroid_gl_proc_resolver: cannot dlopen GL lib '%s' (%s)\n", libgl, dlerror());
     }
     if (!g_gl4es_host_handle)
         return NULL;
@@ -156,7 +156,7 @@ static void* rimdroid_gl_proc_resolver(const char* name)
 // *selection* in Unity is gated on the GL version / extension string (which we
 // control via MESA_*_OVERRIDE), NOT on a non-NULL pointer, so handing back a
 // stub does not make Unity wrongly enable an unsupported path.
-static int rimdroid_gl_noop(void) { return 0; }
+static int pridroid_gl_noop(void) { return 0; }
 
 // Getters libzfa.so does not export need MORE than a no-op: they must ZERO the
 // caller's output buffer, otherwise Unity reads uninitialised garbage (MSAA
@@ -187,12 +187,12 @@ static void rd_glGetInternalformativ(uint32_t target, uint32_t internalformat, u
         default:     v = 1;       break; // default to "supported/yes" rather than 0
     }
     for (int32_t i = 0; i < count; ++i) params[i] = v;
-    static int n=0; if(n<24){n++; printf_log(LOG_NONE, "RIMDROID glGetInternalformativ ifmt=0x%x pname=0x%x => %d\n", internalformat, pname, v);}
+    static int n=0; if(n<24){n++; printf_log(LOG_NONE, "PRIDROID glGetInternalformativ ifmt=0x%x pname=0x%x => %d\n", internalformat, pname, v);}
 }
 // Resolve a REAL Zink GL entry point (dlsym + eglGetProcAddress fallback).
-static void* rd_zfa_gl(const char* n) { return rimdroid_gl_proc_resolver(n); }
+static void* rd_zfa_gl(const char* n) { return pridroid_gl_proc_resolver(n); }
 
-// ---- RimDroid 1.6 sync-poll shim (AI-brief v15) -----------------------------
+// ---- PriDroid 1.6 sync-poll shim (AI-brief v15) -----------------------------
 // Unity polls GLsync objects with zero-timeout waits during the texture-atlas
 // bake. On Zink this can turn a poll loop into thousands of tiny flush/batch
 // states per second. Keep the first real driver query, then coalesce repeated
@@ -223,7 +223,7 @@ static uint64_t rd_sync_poll_window_ns(void)
     static uint64_t window_ns = 1000000ull; // default: 1ms
     if (!init) {
         init = 1;
-        const char* e = getenv("RIMDROID_GL_SYNC_POLL_US");
+        const char* e = getenv("PRIDROID_GL_SYNC_POLL_US");
         if (e) {
             char* end = NULL;
             unsigned long long us = strtoull(e, &end, 0);
@@ -249,7 +249,7 @@ static uint32_t rd_glClientWaitSync(void* sync, uint32_t flags, uint64_t timeout
             static uint64_t skipped = 0;
             skipped++;
             if ((skipped & (skipped - 1)) == 0 || (skipped % 50000ull) == 0) {
-                printf_log(LOG_NONE, "RIMDROID GLSYNC coalesced %llu zero-timeout glClientWaitSync polls (window=%lluus)\n",
+                printf_log(LOG_NONE, "PRIDROID GLSYNC coalesced %llu zero-timeout glClientWaitSync polls (window=%lluus)\n",
                            (unsigned long long)skipped,
                            (unsigned long long)(window_ns / 1000ull));
                 fflush(NULL);
@@ -264,7 +264,7 @@ static uint32_t rd_glClientWaitSync(void* sync, uint32_t flags, uint64_t timeout
         static uint64_t rd_wait_total = 0;
         rd_wait_total++;
         if ((rd_wait_total % 10000) == 1)
-            { printf_log(LOG_NONE, "RIMDROID SYNCSTAT wait_total=%llu timeout=%llu\n", (unsigned long long)rd_wait_total, (unsigned long long)timeout); fflush(NULL); }
+            { printf_log(LOG_NONE, "PRIDROID SYNCSTAT wait_total=%llu timeout=%llu\n", (unsigned long long)rd_wait_total, (unsigned long long)timeout); fflush(NULL); }
     }
     if (sync && timeout == 0) {
         rd_sync_last = sync;
@@ -286,7 +286,7 @@ static void rd_glDeleteSync(void* sync)
         p_rd_real_glDeleteSync(sync);
 }
 
-// ---- RimDroid 1.6 arg-sanity shims (AI-brief v13) ----------------------------
+// ---- PriDroid 1.6 arg-sanity shims (AI-brief v13) ----------------------------
 // At the splash-unload frame ONE GL call carries a garbage/huge size: with
 // ARB_buffer_storage it GPU-faulted (DEVICE_LOST on both drivers); with the
 // extension hidden the same frame dies in an "mmap failed: Out of memory" loop
@@ -297,8 +297,8 @@ static void rd_upload_pace(uint64_t sz);   // defined below with the texture acc
 // ---- GL op-logger (device-lost culprit hunt, 2026-07-11) --------------------------
 // Every death has IDENTICAL counters at the last 256MB-crossing print (sub=13623 etc.) →
 // the guilty command sits at a fixed position in the deterministic upload stream. Gate on
-// the subimage counter: past RIMDROID_GL_LOG_AFTER_SUB, EVERY shimmed GL call is printed
-// with a sequence number, and pacing (RIMDROID_PACE_MB, e.g. 8) adds a glFinish per flush
+// the subimage counter: past PRIDROID_GL_LOG_AFTER_SUB, EVERY shimmed GL call is printed
+// with a sequence number, and pacing (PRIDROID_PACE_MB, e.g. 8) adds a glFinish per flush
 // in the armed zone — the last "pace finish OK" exonerates everything before it, so the
 // culprit is among the handful of ops logged after it.
 static uint64_t rd_sub_calls;              // real definition below with the sub shims
@@ -307,14 +307,14 @@ static int rd_oplog_armed_logged = 0;
 static int rd_gl_oplog_on(void) {
     static int64_t after = -2;
     if (after == -2) {
-        const char* e = getenv("RIMDROID_GL_LOG_AFTER_SUB");
+        const char* e = getenv("PRIDROID_GL_LOG_AFTER_SUB");
         after = (e && e[0]) ? atoll(e) : -1;
     }
     rd_gl_op_seq++;
     if (after < 0 || (int64_t)rd_sub_calls < after) return 0;
     if (!rd_oplog_armed_logged) {
         rd_oplog_armed_logged = 1;
-        printf_log(LOG_NONE, "RIMDROID OPLOG armed at sub=%llu seq=%llu\n",
+        printf_log(LOG_NONE, "PRIDROID OPLOG armed at sub=%llu seq=%llu\n",
                    (unsigned long long)rd_sub_calls, (unsigned long long)rd_gl_op_seq);
         fflush(NULL);
     }
@@ -324,15 +324,15 @@ static int rd_gl_oplog_on(void) {
 // GL diagnostics gate (2026-08-05): the draw/dispatch/mipmap/program wrappers exist ONLY for the
 // device-lost op-log hunts, and the periodic "cumulative" prints (+fflush) fired every ~2s of
 // normal gameplay through the per-frame present blit. Release runs with all of that OFF —
-// RIMDROID_GL_DIAG=1 (extra env) brings the full instrumentation back for a hunt. Functional
+// PRIDROID_GL_DIAG=1 (extra env) brings the full instrumentation back for a hunt. Functional
 // shims (upload/copy pacing, BC shader transforms, sync coalescing, texture shrink) are NOT
 // behind this gate — they are fixes, not diagnostics.
 static int rd_gl_diag_on(void) {
     static int on = -1;
     if (on < 0) {
-        const char* e = getenv("RIMDROID_GL_DIAG");
+        const char* e = getenv("PRIDROID_GL_DIAG");
         on = (e && e[0] == '1') ? 1 : 0;
-        if (on) { printf_log(LOG_NONE, "RIMDROID GL_DIAG enabled: draw wrappers + cumulative prints on\n"); fflush(NULL); }
+        if (on) { printf_log(LOG_NONE, "PRIDROID GL_DIAG enabled: draw wrappers + cumulative prints on\n"); fflush(NULL); }
     }
     return on;
 }
@@ -344,26 +344,26 @@ static uint64_t rd_buf_total = 0, rd_buf_calls = 0;
 static void rd_glBufferStorage(uint32_t target, int64_t size, const void* data, uint32_t flags) {
     if (size > 0) { rd_buf_total += (uint64_t)size; rd_buf_calls++; }
     if ((uint64_t)size > RD_GL_SANE_SIZE)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY glBufferStorage target=0x%x size=%lld flags=0x%x", target, (long long)size, flags); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY glBufferStorage target=0x%x size=%lld flags=0x%x", target, (long long)size, flags); fflush(NULL); }
     if (p_rd_real_glBufferStorage) p_rd_real_glBufferStorage(target, size, data, flags);
     if (size > 0) rd_upload_pace((uint64_t)size);
 }
 static void rd_glBufferData(uint32_t target, int64_t size, const void* data, uint32_t usage) {
     if (size > 0) { rd_buf_total += (uint64_t)size; rd_buf_calls++; }
     if ((uint64_t)size > RD_GL_SANE_SIZE)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY glBufferData target=0x%x size=%lld data=%p usage=0x%x\n", target, (long long)size, data, usage); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY glBufferData target=0x%x size=%lld data=%p usage=0x%x\n", target, (long long)size, data, usage); fflush(NULL); }
     if (p_rd_real_glBufferData) p_rd_real_glBufferData(target, size, data, usage);
     if (size > 0) rd_upload_pace((uint64_t)size);
 }
 static void rd_glBufferSubData(uint32_t target, int64_t offset, int64_t size, const void* data) {
     if ((uint64_t)size > RD_GL_SANE_SIZE || offset < 0)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY glBufferSubData target=0x%x offset=%lld size=%lld data=%p\n", target, (long long)offset, (long long)size, data); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY glBufferSubData target=0x%x offset=%lld size=%lld data=%p\n", target, (long long)offset, (long long)size, data); fflush(NULL); }
     if (p_rd_real_glBufferSubData) p_rd_real_glBufferSubData(target, offset, size, data);
     if (size > 0) rd_upload_pace((uint64_t)size);
 }
 static void* rd_glMapBufferRange(uint32_t target, int64_t offset, int64_t length, uint32_t access) {
     if ((uint64_t)length > RD_GL_SANE_SIZE || offset < 0)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY glMapBufferRange target=0x%x offset=%lld length=%lld access=0x%x\n", target, (long long)offset, (long long)length, access); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY glMapBufferRange target=0x%x offset=%lld length=%lld access=0x%x\n", target, (long long)offset, (long long)length, access); fflush(NULL); }
     return p_rd_real_glMapBufferRange ? p_rd_real_glMapBufferRange(target, offset, length, access) : NULL;
 }
 // Texture-family sanity: the death frame is RimWorld's atlas bake, and Turnip dies on a GPU-BO
@@ -394,7 +394,7 @@ static void rd_upload_pace(uint64_t sz) {
     static void (*p_flush)(void) = NULL; static void (*p_finish)(void) = NULL; static int init = 0;
     static uint64_t pace_bytes = 0;
     if (!pace_bytes) {
-        const char* e = getenv("RIMDROID_PACE_MB");
+        const char* e = getenv("PRIDROID_PACE_MB");
         pace_bytes = (e && e[0] && atoi(e) > 0) ? ((uint64_t)atoi(e) << 20) : (192ull << 20);
     }
     rd_flush_acc += sz; rd_finish_acc += sz;
@@ -405,7 +405,7 @@ static void rd_upload_pace(uint64_t sz) {
     // window — the last "pace finish OK" proves the GPU was alive and done at that point.
     if (rd_oplog_armed_logged && p_finish) {
         p_finish();
-        printf_log(LOG_NONE, "RIMDROID pace finish OK @sub=%llu seq=%llu\n",
+        printf_log(LOG_NONE, "PRIDROID pace finish OK @sub=%llu seq=%llu\n",
                    (unsigned long long)rd_sub_calls, (unsigned long long)rd_gl_op_seq);
         fflush(NULL);
         rd_finish_acc = 0;
@@ -414,7 +414,7 @@ static void rd_upload_pace(uint64_t sz) {
     if (0 && p_finish) {   /* v14 test verdict: finish+flushsync = 2MB-slab alloc storm on the flush thread, net 3.2GB in seconds, died at 30s. Reverted. */
         rd_finish_acc = 0;
         p_finish();
-        printf_log(LOG_NONE, "RIMDROID GLSANITY pacing glFinish (total=%lluMB)\n", (unsigned long long)(rd_tex_total>>20)); fflush(NULL);
+        printf_log(LOG_NONE, "PRIDROID GLSANITY pacing glFinish (total=%lluMB)\n", (unsigned long long)(rd_tex_total>>20)); fflush(NULL);
         return;
     }
     // glFlush ONLY: it alone keeps kgsl under the ~3GB cap (mmap fails went 82 -> 0). A mid-bake
@@ -422,7 +422,7 @@ static void rd_upload_pace(uint64_t sz) {
     // do not force full waits during the upload storm.
     if (p_flush) {
         p_flush();
-        printf_log(LOG_NONE, "RIMDROID GLSANITY pacing glFlush (total=%lluMB)\n", (unsigned long long)(rd_tex_total>>20)); fflush(NULL);
+        printf_log(LOG_NONE, "PRIDROID GLSANITY pacing glFlush (total=%lluMB)\n", (unsigned long long)(rd_tex_total>>20)); fflush(NULL);
     }
 }
 static uint64_t rd_tex_calls = 0;
@@ -435,10 +435,10 @@ static void rd_tex_account(uint32_t ifmt, int32_t levels, int32_t w, int32_t h) 
     uint64_t before = rd_tex_total / (256ull*1024*1024);
     rd_tex_total += sz;
     if (rd_gl_diag_on() && rd_tex_total / (256ull*1024*1024) != before)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY cumulative tex=%lluMB calls=%llu buf=%lluMB bufcalls=%llu rb=%lluMB\n", (unsigned long long)(rd_tex_total/1048576), (unsigned long long)rd_tex_calls, (unsigned long long)(rd_buf_total/1048576), (unsigned long long)rd_buf_calls, (unsigned long long)(rd_rb_total/1048576)); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY cumulative tex=%lluMB calls=%llu buf=%lluMB bufcalls=%llu rb=%lluMB\n", (unsigned long long)(rd_tex_total/1048576), (unsigned long long)rd_tex_calls, (unsigned long long)(rd_buf_total/1048576), (unsigned long long)rd_buf_calls, (unsigned long long)(rd_rb_total/1048576)); fflush(NULL); }
     rd_upload_pace(sz);
 }
-// ---- RimDroid texture shrink (our LIBGL_SHRINK, 2026-07-29) -----------------------------------
+// ---- PriDroid texture shrink (our LIBGL_SHRINK, 2026-07-29) -----------------------------------
 // RimWorld ships PC-sized textures with FULL mip chains (GLSANITY on devices: glTexStorage2D
 // levels=12 ifmt=DXT1/DXT5 2048x2048 during the 1.6 atlas bake, >1GB uploaded in one frame).
 // On a phone screen the top level is wasted sharpness, and on 6GB devices with DLC it is the
@@ -447,13 +447,13 @@ static void rd_tex_account(uint32_t ifmt, int32_t levels, int32_t w, int32_t h) 
 // mip, so we allocate (w/2, h/2, levels-1), DROP the level-0 upload and forward level N as N-1.
 // Only immutable-storage GL_TEXTURE_2D with levels>=2 and a side >=1024 is touched: render
 // targets and Unity's dynamic font/UI atlases are levels==1 and stay bit-exact (UI text safe).
-// Gated by RIMDROID_TEX_SHRINK=1 (launcher: per-instance "Texture quality: Half").
-// RimDroid-fork-only shim — never send upstream (box64's AGENTS.md forbids AI-authored PRs).
+// Gated by PRIDROID_TEX_SHRINK=1 (launcher: per-instance "Texture quality: Half").
+// PriDroid-fork-only shim — never send upstream (box64's AGENTS.md forbids AI-authored PRs).
 #define RD_GL_TEXTURE_2D 0x0DE1u
 #define RD_SHRINK_MAX_ID 65536u   /* map covers GL names < 64K; bigger ids just never shrink */
 /* Per-texture MIP SHIFT (0 = untouched, 1 = top level dropped, 2 = two levels dropped). A value,
  * not a bool, so a deeper low-memory tier is one env change away; today only 0/1 ship (shift 2 is
- * dormant until RIMDROID_TEX_SHRINK=2 is set explicitly). 64KB of .bss. */
+ * dormant until PRIDROID_TEX_SHRINK=2 is set explicitly). 64KB of .bss. */
 static uint8_t rd_shrink_shift[RD_SHRINK_MAX_ID];
 /* GL texture bindings are PER TEXTURE UNIT (glActiveTexture selects the unit; glBindTexture binds
  * into it). A single "last bound" scalar goes stale the moment Unity binds sampling textures on
@@ -485,7 +485,7 @@ static uint64_t rd_shrink_saved = 0;        /* estimated bytes not allocated (RG
 static int rd_tex_deep_min(void) {
     static int v = -1;
     if (v < 0) {
-        const char* e = getenv("RIMDROID_TEX_DEEP_MIN");
+        const char* e = getenv("PRIDROID_TEX_DEEP_MIN");
         v = (e && e[0]) ? atoi(e) : 2048;
         if (v < 1024) v = 1024;   /* below the base >=1024 gate a deep threshold is meaningless */
     }
@@ -494,15 +494,15 @@ static int rd_tex_deep_min(void) {
 static int rd_tex_shrink_on(void) {   /* requested shift: 0 (off) / 1 (halve) / 2 (quarter) */
     static int on = -1;
     if (on < 0) {
-        const char* e = getenv("RIMDROID_TEX_SHRINK");
+        const char* e = getenv("PRIDROID_TEX_SHRINK");
         on = (e && e[0]) ? atoi(e) : 0;
         if (on < 0) on = 0;
         if (on > 2) on = 2;
-        if (on) { printf_log(LOG_NONE, "RIMDROID TEXSHRINK enabled: mip shift=%d (deep-min=%d) on mipped 2D textures\n", on, rd_tex_deep_min()); fflush(NULL); }
+        if (on) { printf_log(LOG_NONE, "PRIDROID TEXSHRINK enabled: mip shift=%d (deep-min=%d) on mipped 2D textures\n", on, rd_tex_deep_min()); fflush(NULL); }
     }
     return on;
 }
-/* ---- Format-class exclusion (RIMDROID_TEX_SHRINK_SKIP_FMT) ------------------------------------
+/* ---- Format-class exclusion (PRIDROID_TEX_SHRINK_SKIP_FMT) ------------------------------------
  * Mip-dropping an ATLAS makes the GPU sample lower mips where neighbouring atlas cells already
  * bleed into each other — field report: green shimmer on snow that shift=0 does not have. We
  * cannot see CONTENT (snow vs plants) from GL, but we CAN see the allocation format, and RimWorld's
@@ -536,7 +536,7 @@ static unsigned rd_tex_skip_mask(void) {
     static int mask = -1;
     if (mask < 0) {
         mask = 0;
-        const char* e = getenv("RIMDROID_TEX_SHRINK_SKIP_FMT");
+        const char* e = getenv("PRIDROID_TEX_SHRINK_SKIP_FMT");
         if (e && e[0]) {
             char buf[128];
             strncpy(buf, e, sizeof(buf) - 1); buf[sizeof(buf) - 1] = 0;
@@ -549,9 +549,9 @@ static unsigned rd_tex_skip_mask(void) {
                 else if (!strcmp(tok, "dxt"))   mask |= RD_FMTC_DXT1 | RD_FMTC_DXT3 | RD_FMTC_DXT5;
                 else if (!strcmp(tok, "rgba8")) mask |= RD_FMTC_RGBA8;
                 else if (!strcmp(tok, "bptc"))  mask |= RD_FMTC_BPTC;
-                else printf_log(LOG_NONE, "RIMDROID TEXSHRINK SKIP-FMT: unknown token '%s' ignored\n", tok);
+                else printf_log(LOG_NONE, "PRIDROID TEXSHRINK SKIP-FMT: unknown token '%s' ignored\n", tok);
             }
-            printf_log(LOG_NONE, "RIMDROID TEXSHRINK SKIP-FMT mask=0x%x (from '%s')\n", mask, e);
+            printf_log(LOG_NONE, "PRIDROID TEXSHRINK SKIP-FMT mask=0x%x (from '%s')\n", mask, e);
             fflush(NULL);
         }
     }
@@ -577,8 +577,8 @@ static void rd_shrink_feed(uint32_t id) {
 static int rd_shrink_is_fed(uint32_t id) {
     return (id && id < RD_SHRINK_MAX_ID) ? (rd_shrink_shift[id] & RD_SHRINK_FED) != 0 : 0;
 }
-// ---- RimDroid T16 telemetry (step 1 of the 16-bit staging experiment, 2026-08-03) -------------
-// Before converting any big uncompressed texture to 16-bit (the future RIMDROID_T16), we must know
+// ---- PriDroid T16 telemetry (step 1 of the 16-bit staging experiment, 2026-08-03) -------------
+// Before converting any big uncompressed texture to 16-bit (the future PRIDROID_T16), we must know
 // each one's ROLE: sampled-only staging (safe to quantize), FBO/render target (conversion risks
 // FRAMEBUFFER_INCOMPLETE — the pawn-atlas class), imageStore target (CompressBC's working surface —
 // quantizing the compressor's INPUT would bake banding into every final atlas), or transient
@@ -611,7 +611,7 @@ static uint64_t rd_t16_bytes_of(uint32_t ifmt, int32_t levels, int32_t w, int32_
 }
 static void rd_t16_alloc(uint32_t id, uint32_t ifmt, int32_t levels, int32_t w, int32_t h) {
     // Release-gated since 0.2.5 (was always-on through the shrink survey): the classification
-    // work is done, so ship silent. RIMDROID_GL_DIAG=1 brings the whole survey back when a
+    // work is done, so ship silent. PRIDROID_GL_DIAG=1 brings the whole survey back when a
     // device needs diagnosing. Gate ALL THREE entry points, not just the logs, so the table
     // stays empty and every rd_t16_hi fast-path check elsewhere short-circuits too.
     if (!rd_gl_diag_on()) return;
@@ -623,7 +623,7 @@ static void rd_t16_alloc(uint32_t id, uint32_t ifmt, int32_t levels, int32_t w, 
     if (slot < 0) {
         if (rd_t16_hi >= RD_T16_MAX) {   // review find #5: never overflow SILENTLY — a full table
             static int warned = 0;       // must be visible, or "all classified" becomes a lie
-            if (!warned) { warned = 1; printf_log(LOG_NONE, "RIMDROID T16TELEM OVERFLOW: table full (%d), further big allocs untracked\n", RD_T16_MAX); fflush(NULL); }
+            if (!warned) { warned = 1; printf_log(LOG_NONE, "PRIDROID T16TELEM OVERFLOW: table full (%d), further big allocs untracked\n", RD_T16_MAX); fflush(NULL); }
             return;
         }
         slot = rd_t16_hi++;
@@ -636,12 +636,12 @@ static void rd_t16_alloc(uint32_t id, uint32_t ifmt, int32_t levels, int32_t w, 
         rd_t16_peak = rd_t16_live;
         if (rd_t16_peak - rd_t16_peak_logged >= (32ull << 20)) {   // log every +32MB of new peak
             rd_t16_peak_logged = rd_t16_peak;
-            printf_log(LOG_NONE, "RIMDROID T16TELEM tracked-live=%lluMB PEAK=%lluMB\n",
+            printf_log(LOG_NONE, "PRIDROID T16TELEM tracked-live=%lluMB PEAK=%lluMB\n",
                        (unsigned long long)(rd_t16_live >> 20), (unsigned long long)(rd_t16_peak >> 20));
             fflush(NULL);
         }
     }
-    printf_log(LOG_NONE, "RIMDROID T16TELEM alloc tex=%u ifmt=0x%x %dx%d lvls=%d (~%uMB) slot=%d live=%lluMB\n",
+    printf_log(LOG_NONE, "PRIDROID T16TELEM alloc tex=%u ifmt=0x%x %dx%d lvls=%d (~%uMB) slot=%d live=%lluMB\n",
                id, ifmt, w, h, levels, (unsigned)(bytes >> 20), slot, (unsigned long long)(rd_t16_live >> 20));
     fflush(NULL);
 }
@@ -655,7 +655,7 @@ static void rd_t16_mark(uint32_t id, uint32_t flag, const char* what) {
     rd_t16_rec* r = rd_t16_find(id);
     if (!r || (r->flags & flag)) return;   // log each role once per texture
     r->flags |= flag;
-    printf_log(LOG_NONE, "RIMDROID T16TELEM %s tex=%u (ifmt=0x%x %dx%d)\n", what, id, r->ifmt, r->w, r->h);
+    printf_log(LOG_NONE, "PRIDROID T16TELEM %s tex=%u (ifmt=0x%x %dx%d)\n", what, id, r->ifmt, r->w, r->h);
     fflush(NULL);
 }
 static void rd_t16_on_delete(uint32_t id) {
@@ -663,7 +663,7 @@ static void rd_t16_on_delete(uint32_t id) {
     rd_t16_rec* r = rd_t16_find(id);
     if (!r) return;
     rd_t16_live = (rd_t16_live >= r->bytes) ? rd_t16_live - r->bytes : 0;
-    printf_log(LOG_NONE, "RIMDROID T16TELEM delete tex=%u ifmt=0x%x %dx%d ~%uMB flags=%s%s%s%s%s%s lived=alloc#%llu..#%llu live=%lluMB\n",
+    printf_log(LOG_NONE, "PRIDROID T16TELEM delete tex=%u ifmt=0x%x %dx%d ~%uMB flags=%s%s%s%s%s%s lived=alloc#%llu..#%llu live=%lluMB\n",
                id, r->ifmt, r->w, r->h, (unsigned)(r->bytes >> 20),
                r->flags ? "" : "sampled-only ",
                (r->flags & RD_T16_F_FBO)   ? "FBO "  : "",
@@ -700,9 +700,9 @@ static void rd_glBindTexture(uint32_t target, uint32_t id) {
 // Three modes, because the one knob was quietly testing two different subsystems at once (review,
 // 2026-08-15): filters live BOTH on the texture object (glTexParameteri) and on sampler objects
 // (glSamplerParameteri), and whichever the game uses for a given draw is the one that decides.
-//   RIMDROID_GLT_NOMIP=1 | both  — clamp both (what the first run did)
-//   RIMDROID_GLT_NOMIP=tex       — texture-object parameters only
-//   RIMDROID_GLT_NOMIP=smp       — sampler-object parameters only
+//   PRIDROID_GLT_NOMIP=1 | both  — clamp both (what the first run did)
+//   PRIDROID_GLT_NOMIP=tex       — texture-object parameters only
+//   PRIDROID_GLT_NOMIP=smp       — sampler-object parameters only
 // Whichever mode alone removes the red names the subsystem to open up; if only "both" is clean, the
 // screen mixes draws that go through each.
 #define RD_NOMIP_OFF  0
@@ -713,14 +713,14 @@ static int rd_glt_on(void);   // defined below with the other translator gates
 static int rd_nomip_mode(void) {
     static int mode = -1;
     if (mode < 0) {
-        const char* e = getenv("RIMDROID_GLT_NOMIP");
+        const char* e = getenv("PRIDROID_GLT_NOMIP");
         mode = RD_NOMIP_OFF;
         if (e && e[0] && rd_glt_on()) {
             if (!strcmp(e, "tex")) mode = RD_NOMIP_TEX;
             else if (!strcmp(e, "smp")) mode = RD_NOMIP_SMP;
             else if (e[0] == '1' || !strcmp(e, "both")) mode = RD_NOMIP_BOTH;
         }
-        if (mode) { printf_log(LOG_NONE, "RIMDROID GLT NOMIP on (%s): minification clamped to level 0\n",
+        if (mode) { printf_log(LOG_NONE, "PRIDROID GLT NOMIP on (%s): minification clamped to level 0\n",
                                mode == RD_NOMIP_BOTH ? "texture + sampler" : mode == RD_NOMIP_TEX ? "texture objects only" : "sampler objects only");
                     fflush(NULL); }
     }
@@ -765,7 +765,7 @@ static void rd_glDeleteTextures(int32_t n, const uint32_t* ids) {
                 uint32_t ifmt = 0; int32_t w = 0, h = 0;
                 for (int s = 0; s < rd_t16_hi; s++)
                     if (rd_t16_tab[s].id == ids[i]) { ifmt = rd_t16_tab[s].ifmt; w = rd_t16_tab[s].w; h = rd_t16_tab[s].h; break; }
-                printf_log(LOG_NONE, "RIMDROID TEXSHRINK ORPHAN DELETE tex=%u shift=%d ifmt=0x%x %dx%d — died with no surviving write\n",
+                printf_log(LOG_NONE, "PRIDROID TEXSHRINK ORPHAN DELETE tex=%u shift=%d ifmt=0x%x %dx%d — died with no surviving write\n",
                            ids[i], rd_shrink_get(ids[i]), ifmt, w, h); fflush(NULL);
             }
         }
@@ -783,7 +783,7 @@ static uint32_t rd_s3tc_rgba_ifmt(uint32_t f);
 static int rd_etc2_on(void);
 static uint32_t rd_s3tc_etc2_ifmt(uint32_t f);
 static void rd_glTexStorage2D(uint32_t target, int32_t levels, uint32_t ifmt, int32_t w, int32_t h) {
-    RD_OPLOG("RIMDROID OP#%llu TexStorage2D lvls=%d ifmt=0x%x %dx%d\n", (unsigned long long)rd_gl_op_seq, levels, ifmt, w, h);
+    RD_OPLOG("PRIDROID OP#%llu TexStorage2D lvls=%d ifmt=0x%x %dx%d\n", (unsigned long long)rd_gl_op_seq, levels, ifmt, w, h);
     // S3TC decode mode: compressed allocations must match what the converted uploads will carry —
     // ETC2 when the transcode is on (same bytes-per-block as DXT, hardware on every GLES3 GPU),
     // else RGBA8/SRGB8A8. Placed before telemetry/shrink so both account the real allocation.
@@ -795,14 +795,14 @@ static void rd_glTexStorage2D(uint32_t target, int32_t levels, uint32_t ifmt, in
     // Done BEFORE accounting so pacing/memory logs reflect what is really allocated.
     int rd_sh = rd_tex_shrink_on();
     const int32_t ow = w, oh = h;   /* original dims, for the shrink log/accounting below */
-    // Format-class exclusion: a class listed in RIMDROID_TEX_SHRINK_SKIP_FMT keeps full mips.
+    // Format-class exclusion: a class listed in PRIDROID_TEX_SHRINK_SKIP_FMT keeps full mips.
     // Counted + logged so a bisect run also reports what the exclusion costs in saved bytes.
     if (rd_sh && target == RD_GL_TEXTURE_2D && levels >= 2 && (w >= 1024 || h >= 1024)
             && (rd_tex_skip_mask() & rd_fmt_class(ifmt))) {
         rd_shrink_skipfmt_n++;
         rd_shrink_skipfmt_bytes += (uint64_t)w * h * 4 / 3;   /* RGBA8-equivalent, mirrors rd_shrink_saved */
         if (rd_shrink_skipfmt_n <= 8 || (rd_shrink_skipfmt_n & 63) == 0)
-            { printf_log(LOG_NONE, "RIMDROID TEXSHRINK SKIP-FMT tex=%u ifmt=0x%x %dx%d lvls=%d (skipped=%llu ~kept-full=%lluMB)\n",
+            { printf_log(LOG_NONE, "PRIDROID TEXSHRINK SKIP-FMT tex=%u ifmt=0x%x %dx%d lvls=%d (skipped=%llu ~kept-full=%lluMB)\n",
                          rd_cur_tex2d(), ifmt, w, h, levels, (unsigned long long)rd_shrink_skipfmt_n,
                          (unsigned long long)(rd_shrink_skipfmt_bytes >> 20)); fflush(NULL); }
         rd_sh = 0;
@@ -822,14 +822,14 @@ static void rd_glTexStorage2D(uint32_t target, int32_t levels, uint32_t ifmt, in
         rd_shrink_n[rd_sh]++;
         rd_shrink_saved += (uint64_t)((int64_t)ow * oh - (int64_t)w * h) * 4 / 3;
         if (rd_sh >= 2 || rd_shrink_marked <= 16 || (rd_shrink_marked & 63) == 0)
-            { printf_log(LOG_NONE, "RIMDROID TEXSHRINK tex=%u ifmt=0x%x %dx%d -> %dx%d lvls=%d shift=%d (marked=%llu shift1=%llu shift2=%llu ~saved=%lluMB)\n",
+            { printf_log(LOG_NONE, "PRIDROID TEXSHRINK tex=%u ifmt=0x%x %dx%d -> %dx%d lvls=%d shift=%d (marked=%llu shift1=%llu shift2=%llu ~saved=%lluMB)\n",
                          rd_cur_tex2d(), ifmt, ow, oh, w, h, levels, rd_sh, (unsigned long long)rd_shrink_marked,
                          (unsigned long long)rd_shrink_n[1], (unsigned long long)rd_shrink_n[2],
                          (unsigned long long)(rd_shrink_saved >> 20)); fflush(NULL); }
     }
     rd_tex_account(ifmt, levels, w, h);
     if ((w >= 2048 || h >= 2048 || w < 0 || h < 0 || levels > 16) && rd_texlog_n < 48)
-        { rd_texlog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glTexStorage2D target=0x%x levels=%d ifmt=0x%x %dx%d\n", target, levels, ifmt, w, h); fflush(NULL); }
+        { rd_texlog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glTexStorage2D target=0x%x levels=%d ifmt=0x%x %dx%d\n", target, levels, ifmt, w, h); fflush(NULL); }
     if (p_rd_real_glTexStorage2D) p_rd_real_glTexStorage2D(target, levels, ifmt, w, h);
     // Immutable allocation: storage only, no content — but the dimensions are what later sub-uploads
 }
@@ -857,13 +857,13 @@ static void rd_glTexStorage2D(uint32_t target, int32_t levels, uint32_t ifmt, in
 static void (*p_rd_real_glPixelStorei)(uint32_t, int32_t) = NULL;
 static int rd_glt_on(void) {   /* a GL translator is active this launch (env set by GameLauncher) */
     static int on = -1;
-    if (on < 0) { const char* e = getenv("RIMDROID_GLT"); on = (e && e[0]) ? 1 : 0; }
+    if (on < 0) { const char* e = getenv("PRIDROID_GLT"); on = (e && e[0]) ? 1 : 0; }
     return on;
 }
 static int rd_glt_fontfix_on(void) {
     static int on = -1;
     if (on < 0) {
-        const char* e = getenv("RIMDROID_GLT_FONTFIX");
+        const char* e = getenv("PRIDROID_GLT_FONTFIX");
         on = (e && e[0] == '1' && rd_glt_on()) ? 1 : 0;
     }
     return on;
@@ -871,7 +871,7 @@ static int rd_glt_fontfix_on(void) {
 static void rd_unpack_tighten(void) {
     if (!rd_glt_on()) return;
     if (!p_rd_real_glPixelStorei)
-        p_rd_real_glPixelStorei = (void(*)(uint32_t, int32_t))rimdroid_gl_proc_resolver("glPixelStorei");
+        p_rd_real_glPixelStorei = (void(*)(uint32_t, int32_t))pridroid_gl_proc_resolver("glPixelStorei");
     if (!p_rd_real_glPixelStorei) return;
     p_rd_real_glPixelStorei(0x0CF2 /*GL_UNPACK_ROW_LENGTH*/, 0);
     p_rd_real_glPixelStorei(0x0CF3 /*GL_UNPACK_SKIP_ROWS*/, 0);
@@ -917,9 +917,9 @@ static const void* rd_glt_bounce_bytes(const void* px, size_t sz, int32_t w, int
     if (!rd_glt_on() || !px || !sz || sz > (64u << 20)) return px;
     // 'pixels' is a PBO offset when an unpack buffer is bound — reading it here would fault on US.
     static void (*p_getiv)(uint32_t, int32_t*) = NULL;
-    if (!p_getiv) p_getiv = (void(*)(uint32_t, int32_t*))rimdroid_gl_proc_resolver("glGetIntegerv");
+    if (!p_getiv) p_getiv = (void(*)(uint32_t, int32_t*))pridroid_gl_proc_resolver("glGetIntegerv");
     if (p_getiv) { int32_t pbo = 0; p_getiv(0x88EF /*PIXEL_UNPACK_BUFFER_BINDING*/, &pbo); if (pbo) return px; }
-    // _Thread_local since the threaded-texture-race brief (2026-08-12): with RIMDROID_GLT_THREADED
+    // _Thread_local since the threaded-texture-race brief (2026-08-12): with PRIDROID_GLT_THREADED
     // two threads can be inside upload wrappers at once, and a SHARED scratch here meant thread B
     // could realloc/overwrite the pixels thread A was still handing to the driver — the prime
     // suspect for the random solid-color texture on the Tecno. Per-thread scratch costs one extra
@@ -948,7 +948,7 @@ static const void* rd_glt_bounce_bytes(const void* px, size_t sz, int32_t w, int
     }
     if (zeroed) {
         static int n = 0;
-        if (n < 24) { n++; printf_log(LOG_NONE, "RIMDROID GLT-BOUNCE HOLEY SOURCE: %dx%d fmt=0x%x type=0x%x size=%zu, %zu bytes unreadable and zero-filled (px=%p)\n",
+        if (n < 24) { n++; printf_log(LOG_NONE, "PRIDROID GLT-BOUNCE HOLEY SOURCE: %dx%d fmt=0x%x type=0x%x size=%zu, %zu bytes unreadable and zero-filled (px=%p)\n",
                                       w, h, fmt, type, sz, zeroed, px); fflush(NULL); }
     }
     return buf;
@@ -960,15 +960,15 @@ static const void* rd_glt_bounce_bytes(const void* px, size_t sz, int32_t w, int
 // Adreno's GLES driver happens to accept S3TC (EXT_texture_compression_s3tc) → her S25 renders;
 // Mali has no S3TC in hardware → every world-atlas upload silently dies → black map, working
 // (uncompressed) UI. Hiding the extension can't help someone who never asks — so the shim decodes
-// DXT to RGBA8 itself at upload time. Gated by RIMDROID_GLT_DECODE_S3TC=1, which GameLauncher
+// DXT to RGBA8 itself at upload time. Gated by PRIDROID_GLT_DECODE_S3TC=1, which GameLauncher
 // sets when a translator is active on a non-Adreno GPU (extra-env applies later, so =0 there is
 // the escape hatch and =1 forces it on Adreno for A/B). Allocations convert alongside uploads
 // (glTexStorage2D with an S3TC internalformat becomes RGBA8/SRGB8A8 — RGBA sub-uploads into
 // compressed storage would be GL errors otherwise).
 static int rd_s3tc_decode_on(void) {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("RIMDROID_GLT_DECODE_S3TC"); on = (e && e[0] == '1') ? 1 : 0;
-        if (on) { printf_log(LOG_NONE, "RIMDROID GLT S3TC-DECODE enabled (translator on a GPU without S3TC)\n"); fflush(NULL); } }
+    if (on < 0) { const char* e = getenv("PRIDROID_GLT_DECODE_S3TC"); on = (e && e[0] == '1') ? 1 : 0;
+        if (on) { printf_log(LOG_NONE, "PRIDROID GLT S3TC-DECODE enabled (translator on a GPU without S3TC)\n"); fflush(NULL); } }
     return on;
 }
 static int rd_s3tc_fmt(uint32_t f)  { return (f >= 0x83F0u && f <= 0x83F3u) || (f >= 0x8C4Cu && f <= 0x8C4Fu); }
@@ -1056,7 +1056,7 @@ static inline int rd_upload_enter(const char* what, uint32_t tex, int level, int
     if (prev != 0 && prev != me) {
         rd_upload_collisions++;
         if (rd_upload_collisions <= 16 || (rd_upload_collisions & 63) == 0)
-            { printf_log(LOG_NONE, "RIMDROID GLT UPLOAD-COLLISION #%llu: %s tex=%u lvl=%d %dx%d tid=%d entered while tid=%d was uploading\n",
+            { printf_log(LOG_NONE, "PRIDROID GLT UPLOAD-COLLISION #%llu: %s tex=%u lvl=%d %dx%d tid=%d entered while tid=%d was uploading\n",
                          (unsigned long long)rd_upload_collisions, what, tex, level, w, h, me, prev); fflush(NULL); }
     }
     return me;
@@ -1074,13 +1074,13 @@ static inline void rd_upload_exit(int me) {
 // DXT1 -> RGB8_ETC2 (8B/block), DXT3/5 -> RGBA8_ETC2_EAC (16B/block), sRGB variants likewise.
 // Encoder = the classic fast subset (ETC1 individual/differential modes + bounded-search EAC),
 // etcpak-style: good sprite quality, ~µs/block scalar. Opt-in while field-testing:
-// RIMDROID_GLT_ETC2=1 in extra env, on top of the decode gate.
+// PRIDROID_GLT_ETC2=1 in extra env, on top of the decode gate.
 static int rd_etc2_on(void) {
     static int on = -1;
     if (on < 0) {
-        const char* e = getenv("RIMDROID_GLT_ETC2");
+        const char* e = getenv("PRIDROID_GLT_ETC2");
         on = (e && e[0] == '1' && rd_s3tc_decode_on()) ? 1 : 0;
-        if (on) { printf_log(LOG_NONE, "RIMDROID GLT S3TC->ETC2 transcode enabled\n"); fflush(NULL); }
+        if (on) { printf_log(LOG_NONE, "PRIDROID GLT S3TC->ETC2 transcode enabled\n"); fflush(NULL); }
     }
     return on;
 }
@@ -1110,7 +1110,7 @@ static void rd_glTexImage2D(uint32_t target, int32_t level, int32_t ifmt, int32_
     if (px) { rd_unpack_tighten(); px = rd_upload_bounce(w, h, fmt, type, px); }
     if (level == 0) rd_tex_account((uint32_t)ifmt, 1, w, h);
     if ((w >= 2048 || h >= 2048 || w < 0 || h < 0) && rd_texlog_n < 48)
-        { rd_texlog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glTexImage2D target=0x%x level=%d ifmt=0x%x %dx%d fmt=0x%x type=0x%x px=%p\n", target, level, ifmt, w, h, fmt, type, px); fflush(NULL); }
+        { rd_texlog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glTexImage2D target=0x%x level=%d ifmt=0x%x %dx%d fmt=0x%x type=0x%x px=%p\n", target, level, ifmt, w, h, fmt, type, px); fflush(NULL); }
     if (p_rd_real_glTexImage2D) p_rd_real_glTexImage2D(target, level, ifmt, w, h, border, fmt, type, px);
     rd_upload_exit(rd_up_tid);
 }
@@ -1118,7 +1118,7 @@ static void (*p_rd_real_glTexStorage3D)(uint32_t,int32_t,uint32_t,int32_t,int32_
 static void rd_glTexStorage3D(uint32_t target, int32_t levels, uint32_t ifmt, int32_t w, int32_t h, int32_t d) {
     if (d > 0) { for (int i = 0; i < d; i++) rd_tex_account(ifmt, levels, w, h); }
     if (rd_texlog_n < 96 && (w >= 1024 || h >= 1024 || d >= 8))
-        { rd_texlog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glTexStorage3D target=0x%x levels=%d ifmt=0x%x %dx%dx%d\n", target, levels, ifmt, w, h, d); fflush(NULL); }
+        { rd_texlog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glTexStorage3D target=0x%x levels=%d ifmt=0x%x %dx%dx%d\n", target, levels, ifmt, w, h, d); fflush(NULL); }
     if (p_rd_real_glTexStorage3D) p_rd_real_glTexStorage3D(target, levels, ifmt, w, h, d);
 }
 static void (*p_rd_real_glTexImage3D)(uint32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,uint32_t,uint32_t,const void*) = NULL;
@@ -1136,14 +1136,14 @@ static void rd_glCompressedTexImage2D(uint32_t target, int32_t level, uint32_t i
     if (data && imageSize > 0) data = rd_glt_bounce_bytes(data, (size_t)imageSize, w, h, ifmt, 0);
     if (level == 0 && imageSize > 0) { rd_tex_total += (uint64_t)imageSize; rd_upload_pace((uint64_t)imageSize); }
     // S3TC decode mode: hand the driver plain RGBA8 instead of DXT it cannot eat (Mali) — or,
-    // with RIMDROID_GLT_ETC2=1, recompress to the GLES-native ETC2 (same bytes-per-block as DXT:
+    // with PRIDROID_GLT_ETC2=1, recompress to the GLES-native ETC2 (same bytes-per-block as DXT:
     // the decode-to-RGBA fix cost 4-8x memory/bandwidth, which is exactly what budget SoCs lack).
     if (rd_s3tc_decode_on() && rd_s3tc_fmt(ifmt) && data && imageSize > 0 && w > 0 && h > 0) {
         uint8_t* dec = rd_s3tc_decode_buf(ifmt, w, h, data, (size_t)imageSize);
         if (dec) {
             rd_s3tc_decoded_n++;
             if (rd_s3tc_decoded_n <= 8 || (rd_s3tc_decoded_n & 255) == 0)
-                { printf_log(LOG_NONE, "RIMDROID GLT S3TC-DECODE TexImage lvl=%d %dx%d ifmt=0x%x (n=%llu)\n",
+                { printf_log(LOG_NONE, "PRIDROID GLT S3TC-DECODE TexImage lvl=%d %dx%d ifmt=0x%x (n=%llu)\n",
                              level, w, h, ifmt, (unsigned long long)rd_s3tc_decoded_n); fflush(NULL); }
             if (rd_etc2_on()) {
                 size_t esz = 0;
@@ -1152,7 +1152,7 @@ static void rd_glCompressedTexImage2D(uint32_t target, int32_t level, uint32_t i
                 if (enc) {
                     rd_etc2_encoded_n++;
                     if (rd_etc2_encoded_n <= 8 || (rd_etc2_encoded_n & 255) == 0)
-                        { printf_log(LOG_NONE, "RIMDROID GLT ETC2 TexImage lvl=%d %dx%d 0x%x->0x%x sz=%zu (n=%llu, encode total=%llums)\n",
+                        { printf_log(LOG_NONE, "PRIDROID GLT ETC2 TexImage lvl=%d %dx%d 0x%x->0x%x sz=%zu (n=%llu, encode total=%llums)\n",
                                      level, w, h, ifmt, efmt, esz, (unsigned long long)rd_etc2_encoded_n,
                                      (unsigned long long)rd_etc2_total_ms()); fflush(NULL); }
                     if (p_rd_real_glCompressedTexImage2D) {
@@ -1180,7 +1180,7 @@ static void rd_glRenderbufferStorage(uint32_t target, uint32_t ifmt, int32_t w, 
 static void rd_glRenderbufferStorageMultisample(uint32_t target, int32_t samples, uint32_t ifmt, int32_t w, int32_t h) {
     if (w > 0 && h > 0) rd_rb_total += (uint64_t)w*h*4*(samples>0?samples:1);
     if (rd_texlog_n < 48)
-        { rd_texlog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glRenderbufferStorageMultisample samples=%d ifmt=0x%x %dx%d\n", samples, ifmt, w, h); fflush(NULL); }
+        { rd_texlog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glRenderbufferStorageMultisample samples=%d ifmt=0x%x %dx%d\n", samples, ifmt, w, h); fflush(NULL); }
     if (p_rd_real_glRenderbufferStorageMultisample) p_rd_real_glRenderbufferStorageMultisample(target, samples, ifmt, w, h);
 }
 // COPY PACING (device-lost fix #2): RimWorld's atlas ASSEMBLY records thousands of
@@ -1202,7 +1202,7 @@ static void rd_copy_account(int64_t w, int64_t h, int64_t d) {
     uint64_t before = rd_copy_total >> 28;
     rd_copy_total += sz;
     if (rd_gl_diag_on() && (rd_copy_total >> 28) != before)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY cumulative copy=%lluMB copycalls=%llu\n", (unsigned long long)(rd_copy_total>>20), (unsigned long long)rd_copy_calls); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY cumulative copy=%lluMB copycalls=%llu\n", (unsigned long long)(rd_copy_total>>20), (unsigned long long)rd_copy_calls); fflush(NULL); }
     rd_upload_pace(sz);
 }
 // The atlas assembly turned out to be CPU-side page UPLOADS, not GL copies: the 64MB
@@ -1219,7 +1219,7 @@ static void rd_sub_account(uint64_t sz) {
     uint64_t before = rd_sub_total >> 28;
     rd_sub_total += sz;
     if (rd_gl_diag_on() && (rd_sub_total >> 28) != before)
-        { printf_log(LOG_NONE, "RIMDROID GLSANITY cumulative sub=%lluMB subcalls=%llu copy=%lluMB copycalls=%llu\n", (unsigned long long)(rd_sub_total>>20), (unsigned long long)rd_sub_calls, (unsigned long long)(rd_copy_total>>20), (unsigned long long)rd_copy_calls); fflush(NULL); }
+        { printf_log(LOG_NONE, "PRIDROID GLSANITY cumulative sub=%lluMB subcalls=%llu copy=%lluMB copycalls=%llu\n", (unsigned long long)(rd_sub_total>>20), (unsigned long long)rd_sub_calls, (unsigned long long)(rd_copy_total>>20), (unsigned long long)rd_copy_calls); fflush(NULL); }
     rd_upload_pace(sz);
 }
 static void rd_glTexSubImage2D(uint32_t target, int32_t level, int32_t xo, int32_t yo, int32_t w, int32_t h, uint32_t fmt, uint32_t type, const void* px) {
@@ -1232,8 +1232,8 @@ static void rd_glTexSubImage2D(uint32_t target, int32_t level, int32_t xo, int32
       if (sh) { if (level < sh) { rd_shrink_dropped++; rd_upload_exit(rd_up_tid); return; } level -= sh; rd_shrink_feed(rd_cur_tex2d()); } }
     if (rd_t16_hi && target == RD_GL_TEXTURE_2D) rd_t16_mark(rd_cur_tex2d(), RD_T16_F_SUB, "SUB-UPLOAD");
     if (w > 0 && h > 0) {
-        if (rd_sublog_n < 4) { rd_sublog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glTexSubImage2D level=%d %dx%d fmt=0x%x\n", level, w, h, fmt); fflush(NULL); }
-        RD_OPLOG("RIMDROID OP#%llu TexSubImage2D lvl=%d %d,%d %dx%d fmt=0x%x\n", (unsigned long long)rd_gl_op_seq, level, xo, yo, w, h, fmt);
+        if (rd_sublog_n < 4) { rd_sublog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glTexSubImage2D level=%d %dx%d fmt=0x%x\n", level, w, h, fmt); fflush(NULL); }
+        RD_OPLOG("PRIDROID OP#%llu TexSubImage2D lvl=%d %d,%d %dx%d fmt=0x%x\n", (unsigned long long)rd_gl_op_seq, level, xo, yo, w, h, fmt);
         rd_sub_account((uint64_t)w * h * 4);
     }
     // Self-resolve fallback: this shim is also installed via the SDL_GL_GetProcAddress
@@ -1286,7 +1286,7 @@ static void rd_glCompressedTexSubImage2D(uint32_t target, int32_t level, int32_t
         if (level < sh) {
             rd_shrink_dropped++;
             if (rd_shrink_dropped == 1 || (rd_shrink_dropped & 4095) == 0)
-                { printf_log(LOG_NONE, "RIMDROID TEXSHRINK dropped=%llu top-level uploads (marked=%llu)\n",
+                { printf_log(LOG_NONE, "PRIDROID TEXSHRINK dropped=%llu top-level uploads (marked=%llu)\n",
                              (unsigned long long)rd_shrink_dropped, (unsigned long long)rd_shrink_marked); fflush(NULL); }
             rd_upload_exit(rd_up_tid);
             return;
@@ -1297,8 +1297,8 @@ static void rd_glCompressedTexSubImage2D(uint32_t target, int32_t level, int32_t
     if (rd_t16_hi && target == RD_GL_TEXTURE_2D) rd_t16_mark(rd_cur_tex2d(), RD_T16_F_SUB, "SUB-UPLOAD");
     if (data && imageSize > 0) data = rd_glt_bounce_bytes(data, (size_t)imageSize, w, h, fmt, 0);  // translator path
     if (imageSize > 0) {
-        if (rd_sublog_n < 4) { rd_sublog_n++; printf_log(LOG_NONE, "RIMDROID GLSANITY glCompressedTexSubImage2D level=%d %dx%d fmt=0x%x size=%d\n", level, w, h, fmt, imageSize); fflush(NULL); }
-        RD_OPLOG("RIMDROID OP#%llu CompressedTexSubImage2D lvl=%d %d,%d %dx%d fmt=0x%x sz=%d\n", (unsigned long long)rd_gl_op_seq, level, xo, yo, w, h, fmt, imageSize);
+        if (rd_sublog_n < 4) { rd_sublog_n++; printf_log(LOG_NONE, "PRIDROID GLSANITY glCompressedTexSubImage2D level=%d %dx%d fmt=0x%x size=%d\n", level, w, h, fmt, imageSize); fflush(NULL); }
+        RD_OPLOG("PRIDROID OP#%llu CompressedTexSubImage2D lvl=%d %d,%d %dx%d fmt=0x%x sz=%d\n", (unsigned long long)rd_gl_op_seq, level, xo, yo, w, h, fmt, imageSize);
         rd_sub_account((uint64_t)imageSize);
     }
     // S3TC decode mode: the storage was converted at TexStorage time (see above) — to ETC2 when
@@ -1309,7 +1309,7 @@ static void rd_glCompressedTexSubImage2D(uint32_t target, int32_t level, int32_t
         if (dec) {
             rd_s3tc_decoded_n++;
             if (rd_s3tc_decoded_n <= 8 || (rd_s3tc_decoded_n & 255) == 0)
-                { printf_log(LOG_NONE, "RIMDROID GLT S3TC-DECODE TexSubImage lvl=%d %d,%d %dx%d fmt=0x%x (n=%llu)\n",
+                { printf_log(LOG_NONE, "PRIDROID GLT S3TC-DECODE TexSubImage lvl=%d %d,%d %dx%d fmt=0x%x (n=%llu)\n",
                              level, xo, yo, w, h, fmt, (unsigned long long)rd_s3tc_decoded_n); fflush(NULL); }
             if (rd_etc2_on()) {
                 size_t esz = 0;
@@ -1318,7 +1318,7 @@ static void rd_glCompressedTexSubImage2D(uint32_t target, int32_t level, int32_t
                 if (enc) {
                     rd_etc2_encoded_n++;
                     if (rd_etc2_encoded_n <= 8 || (rd_etc2_encoded_n & 255) == 0)
-                        { printf_log(LOG_NONE, "RIMDROID GLT ETC2 TexSubImage lvl=%d %d,%d %dx%d 0x%x->0x%x sz=%zu (n=%llu, encode total=%llums)\n",
+                        { printf_log(LOG_NONE, "PRIDROID GLT ETC2 TexSubImage lvl=%d %d,%d %dx%d 0x%x->0x%x sz=%zu (n=%llu, encode total=%llums)\n",
                                      level, xo, yo, w, h, fmt, efmt, esz, (unsigned long long)rd_etc2_encoded_n,
                                      (unsigned long long)rd_etc2_total_ms()); fflush(NULL); }
                     if (p_rd_real_glCompressedTexSubImage2D) {
@@ -1331,7 +1331,7 @@ static void rd_glCompressedTexSubImage2D(uint32_t target, int32_t level, int32_t
             if (!p_rd_real_glTexSubImage2D && &g_zfa_handle && g_zfa_handle)
                 p_rd_real_glTexSubImage2D = (void(*)(uint32_t,int32_t,int32_t,int32_t,int32_t,int32_t,uint32_t,uint32_t,const void*))dlsym(g_zfa_handle, "glTexSubImage2D");
             if (!p_rd_real_glTexSubImage2D)
-                p_rd_real_glTexSubImage2D = (void(*)(uint32_t,int32_t,int32_t,int32_t,int32_t,int32_t,uint32_t,uint32_t,const void*))rimdroid_gl_proc_resolver("glTexSubImage2D");
+                p_rd_real_glTexSubImage2D = (void(*)(uint32_t,int32_t,int32_t,int32_t,int32_t,int32_t,uint32_t,uint32_t,const void*))pridroid_gl_proc_resolver("glTexSubImage2D");
             if (p_rd_real_glTexSubImage2D) {
                 p_rd_real_glTexSubImage2D(target, level, xo, yo, w, h, 0x1908u /*RGBA*/, 0x1401u /*UNSIGNED_BYTE*/, dec);
             }
@@ -1349,7 +1349,7 @@ static void rd_glTexSubImage3D(uint32_t target, int32_t level, int32_t xo, int32
     }
 }
 static void rd_glCopyImageSubData(uint32_t sn, uint32_t st, int32_t sl, int32_t sx, int32_t sy, int32_t sz_, uint32_t dn, uint32_t dt, int32_t dl, int32_t dx, int32_t dy, int32_t dz, int32_t w, int32_t h, int32_t d) {
-    RD_OPLOG("RIMDROID OP#%llu CopyImageSubData src=%u lvl=%d %d,%d,%d dst=%u lvl=%d %d,%d,%d %dx%dx%d\n", (unsigned long long)rd_gl_op_seq, sn, sl, sx, sy, sz_, dn, dl, dx, dy, dz, w, h, d);
+    RD_OPLOG("PRIDROID OP#%llu CopyImageSubData src=%u lvl=%d %d,%d,%d dst=%u lvl=%d %d,%d,%d %dx%dx%d\n", (unsigned long long)rd_gl_op_seq, sn, sl, sx, sy, sz_, dn, dl, dx, dy, dz, w, h, d);
     rd_t16_mark(dn, RD_T16_F_COPY, "COPY-INTO(byname)");   // dst is a texture NAME here — direct
     rd_t16_mark(sn, RD_T16_F_CSRC, "COPY-FROM(byname)");   // review find #2: mark the source too
     // Texture shrink: a copy touching a shrunk texture shifts down one level — per-level texel
@@ -1358,12 +1358,12 @@ static void rd_glCopyImageSubData(uint32_t sn, uint32_t st, int32_t sl, int32_t 
     // it, loudly (review find #2 — RimWorld uses this call in bulk; watch tester logs).
     { int ssh = (st == RD_GL_TEXTURE_2D) ? rd_shrink_get(sn) : 0;
       if (ssh) {
-        if (sl < ssh) { static int n0 = 0; if (n0 < 8) { n0++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK CopyImageSubData DROP src-top tex=%u lvl=%d %dx%d\n", sn, sl, w, h); fflush(NULL); } return; }
+        if (sl < ssh) { static int n0 = 0; if (n0 < 8) { n0++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK CopyImageSubData DROP src-top tex=%u lvl=%d %dx%d\n", sn, sl, w, h); fflush(NULL); } return; }
         sl -= ssh;
       } }
     { int dsh = (dt == RD_GL_TEXTURE_2D) ? rd_shrink_get(dn) : 0;
       if (dsh) {
-        if (dl < dsh) { static int n1 = 0; if (n1 < 8) { n1++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK CopyImageSubData DROP dst-top tex=%u lvl=%d %dx%d\n", dn, dl, w, h); fflush(NULL); } return; }
+        if (dl < dsh) { static int n1 = 0; if (n1 < 8) { n1++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK CopyImageSubData DROP dst-top tex=%u lvl=%d %dx%d\n", dn, dl, w, h); fflush(NULL); } return; }
         dl -= dsh;
         rd_shrink_feed(dn);
       } }
@@ -1381,7 +1381,7 @@ static void rd_glCopyTexSubImage2D(uint32_t target, int32_t level, int32_t xo, i
     { int sh = (target == RD_GL_TEXTURE_2D) ? rd_shrink_get(rd_cur_tex2d()) : 0;
       if (sh) {
         static int logged = 0;
-        if (logged < 8) { logged++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK CopyTexSubImage2D on shrunk tex=%u lvl=%d %dx%d\n", rd_cur_tex2d(), level, w, h); fflush(NULL); }
+        if (logged < 8) { logged++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK CopyTexSubImage2D on shrunk tex=%u lvl=%d %dx%d\n", rd_cur_tex2d(), level, w, h); fflush(NULL); }
         if (level < sh) return;
         level -= sh;
         rd_shrink_feed(rd_cur_tex2d());
@@ -1400,7 +1400,7 @@ static void rd_glFramebufferTexture2D(uint32_t target, uint32_t attachment, uint
     // targets (all observed RTs are levels==1). If the field ever violates that, say so loudly.
     if (texture && rd_shrink_get(texture)) {
         static int n = 0;
-        if (n < 8) { n++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK WARNING: shrunk tex=%u attached to FBO (level=%d)\n", texture, level); fflush(NULL); }
+        if (n < 8) { n++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK WARNING: shrunk tex=%u attached to FBO (level=%d)\n", texture, level); fflush(NULL); }
         rd_shrink_feed(texture);   /* rendering writes content — not an orphan */
     }
     if (!p_rd_real_glFramebufferTexture2D)
@@ -1412,14 +1412,14 @@ static void rd_glBindImageTexture(uint32_t unit, uint32_t texture, int32_t level
     if (texture) rd_t16_mark(texture, RD_T16_F_IMAGE, "IMAGE-BIND");
     if (texture && rd_shrink_get(texture)) {   // same tripwire as the FBO attach
         static int n = 0;
-        if (n < 8) { n++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK WARNING: shrunk tex=%u bound as image (level=%d)\n", texture, level); fflush(NULL); }
+        if (n < 8) { n++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK WARNING: shrunk tex=%u bound as image (level=%d)\n", texture, level); fflush(NULL); }
     }
     if (!p_rd_real_glBindImageTexture)
         p_rd_real_glBindImageTexture = (void(*)(uint32_t,uint32_t,int32_t,uint8_t,int32_t,uint32_t,uint32_t))rd_zfa_gl("glBindImageTexture");
     if (p_rd_real_glBindImageTexture) p_rd_real_glBindImageTexture(unit, texture, level, layered, layer, access, format);
 }
 static void rd_glBlitFramebuffer(int32_t sx0, int32_t sy0, int32_t sx1, int32_t sy1, int32_t dx0, int32_t dy0, int32_t dx1, int32_t dy1, uint32_t mask, uint32_t filter) {
-    RD_OPLOG("RIMDROID OP#%llu BlitFramebuffer %d,%d-%d,%d -> %d,%d-%d,%d mask=0x%x\n", (unsigned long long)rd_gl_op_seq, sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask);
+    RD_OPLOG("PRIDROID OP#%llu BlitFramebuffer %d,%d-%d,%d -> %d,%d-%d,%d mask=0x%x\n", (unsigned long long)rd_gl_op_seq, sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask);
     rd_copy_account((int64_t)(dx1 > dx0 ? dx1 - dx0 : dx0 - dx1), (int64_t)(dy1 > dy0 ? dy1 - dy0 : dy0 - dy1), 1);
     if (p_rd_real_glBlitFramebuffer) p_rd_real_glBlitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, mask, filter);
 }
@@ -1435,35 +1435,35 @@ static void (*p_rd_real_glDrawElementsInstancedBaseVertex)(uint32_t,int32_t,uint
 static void (*p_rd_real_glDispatchCompute)(uint32_t,uint32_t,uint32_t) = NULL;
 static void (*p_rd_real_glGenerateMipmap)(uint32_t) = NULL;
 static void rd_glDrawArrays(uint32_t mode, int32_t first, int32_t count) {
-    RD_OPLOG("RIMDROID OP#%llu DrawArrays mode=0x%x first=%d n=%d\n", (unsigned long long)rd_gl_op_seq, mode, first, count);
+    RD_OPLOG("PRIDROID OP#%llu DrawArrays mode=0x%x first=%d n=%d\n", (unsigned long long)rd_gl_op_seq, mode, first, count);
     if (p_rd_real_glDrawArrays) p_rd_real_glDrawArrays(mode, first, count);
 }
 static void rd_glDrawElements(uint32_t mode, int32_t count, uint32_t type, const void* idx) {
-    RD_OPLOG("RIMDROID OP#%llu DrawElements mode=0x%x n=%d type=0x%x\n", (unsigned long long)rd_gl_op_seq, mode, count, type);
+    RD_OPLOG("PRIDROID OP#%llu DrawElements mode=0x%x n=%d type=0x%x\n", (unsigned long long)rd_gl_op_seq, mode, count, type);
     if (p_rd_real_glDrawElements) p_rd_real_glDrawElements(mode, count, type, idx);
 }
 static void rd_glDrawElementsBaseVertex(uint32_t mode, int32_t count, uint32_t type, const void* idx, int32_t base) {
-    RD_OPLOG("RIMDROID OP#%llu DrawElementsBaseVertex mode=0x%x n=%d base=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, base);
+    RD_OPLOG("PRIDROID OP#%llu DrawElementsBaseVertex mode=0x%x n=%d base=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, base);
     if (p_rd_real_glDrawElementsBaseVertex) p_rd_real_glDrawElementsBaseVertex(mode, count, type, idx, base);
 }
 static void rd_glDrawArraysInstanced(uint32_t mode, int32_t first, int32_t count, int32_t inst) {
-    RD_OPLOG("RIMDROID OP#%llu DrawArraysInstanced mode=0x%x n=%d inst=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst);
+    RD_OPLOG("PRIDROID OP#%llu DrawArraysInstanced mode=0x%x n=%d inst=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst);
     if (p_rd_real_glDrawArraysInstanced) p_rd_real_glDrawArraysInstanced(mode, first, count, inst);
 }
 static void rd_glDrawElementsInstanced(uint32_t mode, int32_t count, uint32_t type, const void* idx, int32_t inst) {
-    RD_OPLOG("RIMDROID OP#%llu DrawElementsInstanced mode=0x%x n=%d inst=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst);
+    RD_OPLOG("PRIDROID OP#%llu DrawElementsInstanced mode=0x%x n=%d inst=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst);
     if (p_rd_real_glDrawElementsInstanced) p_rd_real_glDrawElementsInstanced(mode, count, type, idx, inst);
 }
 static void rd_glDrawElementsInstancedBaseVertex(uint32_t mode, int32_t count, uint32_t type, const void* idx, int32_t inst, int32_t base) {
-    RD_OPLOG("RIMDROID OP#%llu DrawElementsInstancedBaseVertex mode=0x%x n=%d inst=%d base=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst, base);
+    RD_OPLOG("PRIDROID OP#%llu DrawElementsInstancedBaseVertex mode=0x%x n=%d inst=%d base=%d\n", (unsigned long long)rd_gl_op_seq, mode, count, inst, base);
     if (p_rd_real_glDrawElementsInstancedBaseVertex) p_rd_real_glDrawElementsInstancedBaseVertex(mode, count, type, idx, inst, base);
 }
 static void rd_glDispatchCompute(uint32_t x, uint32_t y, uint32_t z) {
-    RD_OPLOG("RIMDROID OP#%llu DispatchCompute %ux%ux%u\n", (unsigned long long)rd_gl_op_seq, x, y, z);
+    RD_OPLOG("PRIDROID OP#%llu DispatchCompute %ux%ux%u\n", (unsigned long long)rd_gl_op_seq, x, y, z);
     if (p_rd_real_glDispatchCompute) p_rd_real_glDispatchCompute(x, y, z);
 }
 static void rd_glGenerateMipmap(uint32_t target) {
-    RD_OPLOG("RIMDROID OP#%llu GenerateMipmap target=0x%x\n", (unsigned long long)rd_gl_op_seq, target);
+    RD_OPLOG("PRIDROID OP#%llu GenerateMipmap target=0x%x\n", (unsigned long long)rd_gl_op_seq, target);
     // Orphan probe (installed ALWAYS since the blueprint-flicker hunt, not just under GL_DIAG):
     // mipgen on a shrunk texture whose kept levels were never written reads pure garbage — the
     // exact "random colors" signature. Base-written textures are fine: our level 0 holds the
@@ -1473,7 +1473,7 @@ static void rd_glGenerateMipmap(uint32_t target) {
         int sh = rd_shrink_get(id);
         if (sh && !rd_shrink_is_fed(id)) {
             static int n = 0;
-            if (n < 16) { n++; printf_log(LOG_NONE, "RIMDROID TEXSHRINK ORPHAN MIPGEN tex=%u shift=%d — all writes were dropped, content undefined\n", id, sh); fflush(NULL); }
+            if (n < 16) { n++; printf_log(LOG_NONE, "PRIDROID TEXSHRINK ORPHAN MIPGEN tex=%u shift=%d — all writes were dropped, content undefined\n", id, sh); fflush(NULL); }
         }
     }
     if (!p_rd_real_glGenerateMipmap)
@@ -1484,12 +1484,12 @@ static void rd_glGenerateMipmap(uint32_t target) {
 }
 // Shader identification (culprit = a draw hanging the GPU): the last UseProgram before the
 // loss names the guilty program; ShaderSource dumps every shader's text (keyed by shader id)
-// to RIMDROID_CACHE_DIR/rd_shaders.txt and AttachShader logs the program<->shader mapping.
+// to PRIDROID_CACHE_DIR/rd_shaders.txt and AttachShader logs the program<->shader mapping.
 static void (*p_rd_real_glUseProgram)(uint32_t) = NULL;
 static void (*p_rd_real_glShaderSource)(uint32_t,int32_t,const char* const*,const int32_t*) = NULL;
 static void (*p_rd_real_glAttachShader)(uint32_t,uint32_t) = NULL;
 static void rd_glUseProgram(uint32_t prog) {
-    RD_OPLOG("RIMDROID OP#%llu UseProgram %u\n", (unsigned long long)rd_gl_op_seq, prog);
+    RD_OPLOG("PRIDROID OP#%llu UseProgram %u\n", (unsigned long long)rd_gl_op_seq, prog);
     if (p_rd_real_glUseProgram) p_rd_real_glUseProgram(prog);
 }
 // TEXTURE-COMPRESSION FIX (2026-07-12): Unity's runtime BC-compression shader (Hidden/CompressBC,
@@ -1500,11 +1500,11 @@ static void rd_glUseProgram(uint32_t prog) {
 // a loop never exits -> infinite loop on the GPU. We already intercept GLSL here, so bound every
 // such loop with a hard iteration cap: if the real break works the cap never fires (identical
 // result); if the exit is miscompiled, the cap breaks the infinite loop (tiny quality cost). Real
-// BC loops are <=~64 iterations, so the default 256 cap is safe. Env RIMDROID_BC_CAP overrides it;
-// RIMDROID_BC_NOCAP=1 disables the transform (A/B). Only the compressor shader is touched.
+// BC loops are <=~64 iterations, so the default 256 cap is safe. Env PRIDROID_BC_CAP overrides it;
+// PRIDROID_BC_NOCAP=1 disables the transform (A/B). Only the compressor shader is touched.
 // Force CompressBC's existing low-quality algorithm at compile time. The first _Quality token is
 // its uniform declaration and must remain intact; replacing later references lets Mesa eliminate
-// the large endpoint-search branches before ir3 compilation. RIMDROID_BC_QUALITY may select a
+// the large endpoint-search branches before ir3 compilation. PRIDROID_BC_QUALITY may select a
 // different compile-time value in [0, 1].
 static char* rd_bc_force_quality(const char* src, int* out_n) {
     const char* TOKEN = "_Quality";
@@ -1513,7 +1513,7 @@ static char* rd_bc_force_quality(const char* src, int* out_n) {
     if (!declaration) { if (out_n) *out_n = 0; return NULL; }
 
     float quality = 0.0f;
-    const char* e = getenv("RIMDROID_BC_QUALITY");
+    const char* e = getenv("PRIDROID_BC_QUALITY");
     if (e && e[0]) {
         quality = strtof(e, NULL);
         if (quality < 0.0f) quality = 0.0f;
@@ -1552,8 +1552,8 @@ static char* rd_bc_bound_loops(const char* src, int* out_n) {
     const size_t NL = 12;
     int cap = 16;   // experiment 2: BC endpoint/palette loops need <=~16 iters; a tight cap tests
                     // whether a miscompiled exit is running them far past termination (256 still
-                    // DEVICE_LOST). Env RIMDROID_BC_CAP overrides.
-    { const char* e = getenv("RIMDROID_BC_CAP"); if (e && atoi(e) > 0) cap = atoi(e); }
+                    // DEVICE_LOST). Env PRIDROID_BC_CAP overrides.
+    { const char* e = getenv("PRIDROID_BC_CAP"); if (e && atoi(e) > 0) cap = atoi(e); }
     char repl[96];
     int rl = snprintf(repl, sizeof(repl), "for(int _rd_g=0;_rd_g<%d;++_rd_g){", cap);
     // count occurrences to size the output
@@ -1578,12 +1578,12 @@ static void rd_glShaderSource(uint32_t shader, int32_t count, const char* const*
     static FILE* f = NULL; static int tried = 0;
     if (!tried) {
         tried = 1;
-        const char* dir = getenv("RIMDROID_CACHE_DIR");
+        const char* dir = getenv("PRIDROID_CACHE_DIR");
         if (dir && dir[0]) {
             char path[512];
             snprintf(path, sizeof(path), "%s/rd_shaders.txt", dir);
             f = fopen(path, "w");
-            printf_log(LOG_NONE, "RIMDROID shader dump -> %s (%s)\n", path, f ? "ok" : "FAILED");
+            printf_log(LOG_NONE, "PRIDROID shader dump -> %s (%s)\n", path, f ? "ok" : "FAILED");
         }
     }
     if (f && strings && count > 0) {
@@ -1600,8 +1600,8 @@ static void rd_glShaderSource(uint32_t shader, int32_t count, const char* const*
     // optionally hand the driver a version with every remaining while(true) loop hard-capped.
     static int nocap = -1;
     static int native_quality = -1;
-    if (nocap == -1) nocap = getenv("RIMDROID_BC_NOCAP") ? 1 : 0;
-    if (native_quality == -1) native_quality = getenv("RIMDROID_BC_NATIVE_QUALITY") ? 1 : 0;
+    if (nocap == -1) nocap = getenv("PRIDROID_BC_NOCAP") ? 1 : 0;
+    if (native_quality == -1) native_quality = getenv("PRIDROID_BC_NATIVE_QUALITY") ? 1 : 0;
     if (strings && count > 0) {
         size_t total = 0;
         for (int32_t i = 0; i < count; i++)
@@ -1623,7 +1623,7 @@ static void rd_glShaderSource(uint32_t shader, int32_t count, const char* const*
                 char* loop_fixed = nocap ? NULL : rd_bc_bound_loops(cap_input, &nloops);
                 const char* fixed = loop_fixed ? loop_fixed : quality_fixed;
                 if (fixed) {
-                    printf_log(LOG_NONE, "RIMDROID CompressBC shim: shader %u quality_refs=%d bounded_loops=%d%s%s\n",
+                    printf_log(LOG_NONE, "PRIDROID CompressBC shim: shader %u quality_refs=%d bounded_loops=%d%s%s\n",
                         shader, nquality, nloops, native_quality ? " native-quality" : " low-quality",
                         nocap ? " no-cap" : "");
                     fflush(NULL);
@@ -1641,7 +1641,7 @@ static void rd_glShaderSource(uint32_t shader, int32_t count, const char* const*
     if (p_rd_real_glShaderSource) p_rd_real_glShaderSource(shader, count, strings, lengths);
 }
 static void rd_glAttachShader(uint32_t prog, uint32_t shader) {
-    printf_log(LOG_NONE, "RIMDROID GLSANITY AttachShader prog=%u shader=%u\n", prog, shader);
+    printf_log(LOG_NONE, "PRIDROID GLSANITY AttachShader prog=%u shader=%u\n", prog, shader);
     if (p_rd_real_glAttachShader) p_rd_real_glAttachShader(prog, shader);
 }
 
@@ -1665,7 +1665,7 @@ static void rd_glGetTextureParameteriv(uint32_t texture, uint32_t pname, int32_t
         get(0x0DE1, pname, params);
         bind(0x0DE1, (uint32_t)prev);
     }
-    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "RIMDROID glGetTextureParameteriv tex=%u pname=0x%x => %d%s\n", texture, pname, params[0], (bind&&get)?"":" [no-proxy]");}
+    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "PRIDROID glGetTextureParameteriv tex=%u pname=0x%x => %d%s\n", texture, pname, params[0], (bind&&get)?"":" [no-proxy]");}
 }
 static void rd_glGetTextureLevelParameteriv(uint32_t texture, int32_t level, uint32_t pname, int32_t* params) {
     static void (*bind)(uint32_t,uint32_t) = 0;
@@ -1681,14 +1681,14 @@ static void rd_glGetTextureLevelParameteriv(uint32_t texture, int32_t level, uin
         get(0x0DE1, level, pname, params);
         bind(0x0DE1, (uint32_t)prev);
     }
-    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "RIMDROID glGetTextureLevelParameteriv tex=%u lvl=%d pname=0x%x => %d%s\n", texture, level, pname, params[0], (bind&&get)?"":" [no-proxy]");}
+    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "PRIDROID glGetTextureLevelParameteriv tex=%u lvl=%d pname=0x%x => %d%s\n", texture, level, pname, params[0], (bind&&get)?"":" [no-proxy]");}
 }
 static void rd_glGetQueryObjectui64v(uint32_t id, uint32_t pname, uint64_t* params) {
     if (!params) return;
     // GL_QUERY_RESULT_AVAILABLE(0x8867) → TRUE (else Unity may wait forever / treat
     // GPU timers as broken = device failure); GL_QUERY_RESULT(0x8866) → 0.
     params[0] = (pname == 0x8867) ? 1u : 0u;
-    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "RIMDROID glGetQueryObjectui64v id=%u pname=0x%x => %llu\n", id, pname, (unsigned long long)params[0]);}
+    static int n=0; if(n<16){n++; printf_log(LOG_NONE, "PRIDROID glGetQueryObjectui64v id=%u pname=0x%x => %llu\n", id, pname, (unsigned long long)params[0]);}
 }
 
 // (the old diagnostic glTexSubImage2D shim merged into the pacing shim above — one definition,
@@ -2335,17 +2335,17 @@ int EXPORT my2_SDL_DYNAPI_entry(x64emu_t* emu, uint32_t version, uintptr_t *tabl
                                (uint64_t)(uintptr_t)table,
                                (uint64_t)tablesize);
             memcpy(tab, table, tablesize);
-            printf_log(LOG_NONE, "RIMDROID SDL_DYNAPI_entry: seeded from built-in @%p (elf #%d, %u entries)\n", (void*)gstart, found_elf, n);
+            printf_log(LOG_NONE, "PRIDROID SDL_DYNAPI_entry: seeded from built-in @%p (elf #%d, %u entries)\n", (void*)gstart, found_elf, n);
         } else {
             // Built-in not found in ANY elf — fall back to the (broken) default-stub table.
             memcpy(tab, table, tablesize);
-            printf_log(LOG_NONE, "RIMDROID SDL_DYNAPI_entry: built-in NOT found in any of %d elfs — non-wrapped SDL calls WILL hang (%u entries)\n", emu->context->elfsize, n);
+            printf_log(LOG_NONE, "PRIDROID SDL_DYNAPI_entry: built-in NOT found in any of %d elfs — non-wrapped SDL calls WILL hang (%u entries)\n", emu->context->elfsize, n);
         }
     }
 
-    printf_log(LOG_NONE, "RIMDROID jump_table base=%p tablesize=%u n=%u\n", (void*)table, tablesize, n);
+    printf_log(LOG_NONE, "PRIDROID jump_table base=%p tablesize=%u n=%u\n", (void*)table, tablesize, n);
 
-    // --- RimDroid corrective GL dynapi remap --------------------------------
+    // --- PriDroid corrective GL dynapi remap --------------------------------
     // RimWorldLinux ships Unity's own static SDL2, whose SDL_dynapi jump-table
     // index order differs from box64's canonical SDL_dynapi_procs.h.  The loop
     // below installs each wrapped bridge at box64's index; for the GL cluster
@@ -2417,7 +2417,7 @@ int EXPORT my2_SDL_DYNAPI_entry(x64emu_t* emu, uint32_t version, uintptr_t *tabl
                 if (!strcmp(#sym, rd_remap[rj].name)) { rd_box64_idx[rj] = i; rd_bridge[rj] = table[i]; } \
             /* GROUND TRUTH: log box64 index + absolute slot addr for GL/window funcs */ \
             if (!strncmp(#sym, "SDL_GL_", 7) || !strcmp(#sym, "SDL_CreateWindow")) \
-                printf_log(LOG_NONE, "RIMDROID MAP %s box64_idx=%u slot=%p\n", #sym, i, (void*)&table[i]); \
+                printf_log(LOG_NONE, "PRIDROID MAP %s box64_idx=%u slot=%p\n", #sym, i, (void*)&table[i]); \
             i++; \
         }
 
@@ -2437,11 +2437,11 @@ int EXPORT my2_SDL_DYNAPI_entry(x64emu_t* emu, uint32_t version, uintptr_t *tabl
     // For new-SDL games (RimWorld 1.5+ / Unity 2022) the order is the same →
     // box64_idx == rw_idx → the bridges are already in the right slots →
     // remap would move them to the wrong (old) positions.
-    // Controlled by RIMDROID_SDL_REMAP env: "0" = skip; default = apply.
-    const char* remap_env = getenv("RIMDROID_SDL_REMAP");
+    // Controlled by PRIDROID_SDL_REMAP env: "0" = skip; default = apply.
+    const char* remap_env = getenv("PRIDROID_SDL_REMAP");
     int do_remap = (!remap_env || strcmp(remap_env, "0") != 0);
     if (!do_remap) {
-        printf_log(LOG_NONE, "RIMDROID REMAP: skipped (RIMDROID_SDL_REMAP=0, new-SDL game)\n");
+        printf_log(LOG_NONE, "PRIDROID REMAP: skipped (PRIDROID_SDL_REMAP=0, new-SDL game)\n");
         return 0;
     }
     // pass 1: undo the box64-indexed placement (restore the seeded RimWorld
@@ -2455,7 +2455,7 @@ int EXPORT my2_SDL_DYNAPI_entry(x64emu_t* emu, uint32_t version, uintptr_t *tabl
     for (int rj = 0; rj < rd_nremap; ++rj)
         if (rd_bridge[rj] && rd_remap[rj].rw_idx < n) {
             table[rd_remap[rj].rw_idx] = rd_bridge[rj];
-            printf_log(LOG_NONE, "RIMDROID REMAP %s box64_idx=%u -> rw_idx=%u bridge=%p\n",
+            printf_log(LOG_NONE, "PRIDROID REMAP %s box64_idx=%u -> rw_idx=%u bridge=%p\n",
                        rd_remap[rj].name, rd_box64_idx[rj], rd_remap[rj].rw_idx, (void*)rd_bridge[rj]);
         }
     return 0;
@@ -2521,65 +2521,65 @@ EXPORT void my2_SDL_Log(x64emu_t* emu, void* fmt, void *b) {
 
 // Shared GL proc-address resolver used by BOTH the SDL2 GL path (RimWorld 1.5) and the
 // GLX path (RimWorld 1.6, wrappedlibgl.c my_glXGetProcAddress). Resolves a GL entry point
-// from the active renderer (ZFA/OSMesa/GL4ES) via rimdroid_gl_proc_resolver and installs
+// from the active renderer (ZFA/OSMesa/GL4ES) via pridroid_gl_proc_resolver and installs
 // the critical zeroing-getter / no-op stubs for names libzfa.so does not export (a bare
 // NULL pointer would make Unity jump to 0x0 or read garbage → GfxDevice teardown loop).
 // NOT static: called from wrappedlibgl.c (same box64 .so). pa=NULL → use the resolver.
-void* rimdroid_gl_getprocaddr(x64emu_t* emu, bridge_t* bridge, glprocaddress_t pa, const char* rname)
+void* pridroid_gl_getprocaddr(x64emu_t* emu, bridge_t* bridge, glprocaddress_t pa, const char* rname)
 {
     if (!rname) return NULL;
-    if (!pa) pa = rimdroid_gl_proc_resolver;
+    if (!pa) pa = pridroid_gl_proc_resolver;
     // Arg-sanity shims (v13): hand back instrumented wrappers for the buffer-upload family.
     {
         wrapper_t w = NULL; void* fn = NULL;
-        if      (!strcmp(rname, "glBufferStorage"))  { p_rd_real_glBufferStorage = rimdroid_gl_proc_resolver(rname); w = vFulpu; fn = (void*)rd_glBufferStorage; }
-        else if (!strcmp(rname, "glBufferData"))     { p_rd_real_glBufferData    = rimdroid_gl_proc_resolver(rname); w = vFulpu; fn = (void*)rd_glBufferData; }
-        else if (!strcmp(rname, "glBufferSubData"))  { p_rd_real_glBufferSubData = rimdroid_gl_proc_resolver(rname); w = vFullp; fn = (void*)rd_glBufferSubData; }
-        else if (!strcmp(rname, "glMapBufferRange")) { p_rd_real_glMapBufferRange= rimdroid_gl_proc_resolver(rname); w = pFullu; fn = (void*)rd_glMapBufferRange; }
-        else if (!strcmp(rname, "glTexStorage2D"))   { p_rd_real_glTexStorage2D  = rimdroid_gl_proc_resolver(rname); w = vFuiuii; fn = (void*)rd_glTexStorage2D; }
-        else if (!strcmp(rname, "glTexImage2D"))     { p_rd_real_glTexImage2D    = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiuup; fn = (void*)rd_glTexImage2D; }
-        else if (!strcmp(rname, "glRenderbufferStorage")) { p_rd_real_glRenderbufferStorage = rimdroid_gl_proc_resolver(rname); w = vFuuii; fn = (void*)rd_glRenderbufferStorage; }
-        else if (!strcmp(rname, "glRenderbufferStorageMultisample")) { p_rd_real_glRenderbufferStorageMultisample = rimdroid_gl_proc_resolver(rname); w = vFuiuii; fn = (void*)rd_glRenderbufferStorageMultisample; }
-        else if (!strcmp(rname, "glTexStorage3D"))   { p_rd_real_glTexStorage3D  = rimdroid_gl_proc_resolver(rname); w = vFuiuiii; fn = (void*)rd_glTexStorage3D; }
-        else if (!strcmp(rname, "glTexImage3D"))     { p_rd_real_glTexImage3D    = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiiuup; fn = (void*)rd_glTexImage3D; }
-        else if (!strcmp(rname, "glCompressedTexImage2D")) { p_rd_real_glCompressedTexImage2D = rimdroid_gl_proc_resolver(rname); w = vFuiuiiiip; fn = (void*)rd_glCompressedTexImage2D; }
-        else if (!strcmp(rname, "glClientWaitSync")) { p_rd_real_glClientWaitSync = rimdroid_gl_proc_resolver(rname); w = uFpuU; fn = (void*)rd_glClientWaitSync; }
-        else if (!strcmp(rname, "glDeleteSync"))     { p_rd_real_glDeleteSync     = rimdroid_gl_proc_resolver(rname); w = vFp;   fn = (void*)rd_glDeleteSync; }
-        else if (!strcmp(rname, "glCopyImageSubData"))  { p_rd_real_glCopyImageSubData  = rimdroid_gl_proc_resolver(rname); w = vFuuiiiiuuiiiiiii; fn = (void*)rd_glCopyImageSubData; }
-        else if (!strcmp(rname, "glCopyTexSubImage2D")) { p_rd_real_glCopyTexSubImage2D = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiii; fn = (void*)rd_glCopyTexSubImage2D; }
-        else if (!strcmp(rname, "glBlitFramebuffer"))   { p_rd_real_glBlitFramebuffer   = rimdroid_gl_proc_resolver(rname); w = vFiiiiiiiiuu; fn = (void*)rd_glBlitFramebuffer; }
-        else if (!strcmp(rname, "glTexSubImage2D"))     { p_rd_real_glTexSubImage2D     = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiuup; fn = (void*)rd_glTexSubImage2D; }
-        else if (!strcmp(rname, "glCompressedTexSubImage2D")) { p_rd_real_glCompressedTexSubImage2D = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiuip; fn = (void*)rd_glCompressedTexSubImage2D; }
-        else if (!strcmp(rname, "glTexSubImage3D"))     { p_rd_real_glTexSubImage3D     = rimdroid_gl_proc_resolver(rname); w = vFuiiiiiiiuup; fn = (void*)rd_glTexSubImage3D; }
+        if      (!strcmp(rname, "glBufferStorage"))  { p_rd_real_glBufferStorage = pridroid_gl_proc_resolver(rname); w = vFulpu; fn = (void*)rd_glBufferStorage; }
+        else if (!strcmp(rname, "glBufferData"))     { p_rd_real_glBufferData    = pridroid_gl_proc_resolver(rname); w = vFulpu; fn = (void*)rd_glBufferData; }
+        else if (!strcmp(rname, "glBufferSubData"))  { p_rd_real_glBufferSubData = pridroid_gl_proc_resolver(rname); w = vFullp; fn = (void*)rd_glBufferSubData; }
+        else if (!strcmp(rname, "glMapBufferRange")) { p_rd_real_glMapBufferRange= pridroid_gl_proc_resolver(rname); w = pFullu; fn = (void*)rd_glMapBufferRange; }
+        else if (!strcmp(rname, "glTexStorage2D"))   { p_rd_real_glTexStorage2D  = pridroid_gl_proc_resolver(rname); w = vFuiuii; fn = (void*)rd_glTexStorage2D; }
+        else if (!strcmp(rname, "glTexImage2D"))     { p_rd_real_glTexImage2D    = pridroid_gl_proc_resolver(rname); w = vFuiiiiiuup; fn = (void*)rd_glTexImage2D; }
+        else if (!strcmp(rname, "glRenderbufferStorage")) { p_rd_real_glRenderbufferStorage = pridroid_gl_proc_resolver(rname); w = vFuuii; fn = (void*)rd_glRenderbufferStorage; }
+        else if (!strcmp(rname, "glRenderbufferStorageMultisample")) { p_rd_real_glRenderbufferStorageMultisample = pridroid_gl_proc_resolver(rname); w = vFuiuii; fn = (void*)rd_glRenderbufferStorageMultisample; }
+        else if (!strcmp(rname, "glTexStorage3D"))   { p_rd_real_glTexStorage3D  = pridroid_gl_proc_resolver(rname); w = vFuiuiii; fn = (void*)rd_glTexStorage3D; }
+        else if (!strcmp(rname, "glTexImage3D"))     { p_rd_real_glTexImage3D    = pridroid_gl_proc_resolver(rname); w = vFuiiiiiiuup; fn = (void*)rd_glTexImage3D; }
+        else if (!strcmp(rname, "glCompressedTexImage2D")) { p_rd_real_glCompressedTexImage2D = pridroid_gl_proc_resolver(rname); w = vFuiuiiiip; fn = (void*)rd_glCompressedTexImage2D; }
+        else if (!strcmp(rname, "glClientWaitSync")) { p_rd_real_glClientWaitSync = pridroid_gl_proc_resolver(rname); w = uFpuU; fn = (void*)rd_glClientWaitSync; }
+        else if (!strcmp(rname, "glDeleteSync"))     { p_rd_real_glDeleteSync     = pridroid_gl_proc_resolver(rname); w = vFp;   fn = (void*)rd_glDeleteSync; }
+        else if (!strcmp(rname, "glCopyImageSubData"))  { p_rd_real_glCopyImageSubData  = pridroid_gl_proc_resolver(rname); w = vFuuiiiiuuiiiiiii; fn = (void*)rd_glCopyImageSubData; }
+        else if (!strcmp(rname, "glCopyTexSubImage2D")) { p_rd_real_glCopyTexSubImage2D = pridroid_gl_proc_resolver(rname); w = vFuiiiiiii; fn = (void*)rd_glCopyTexSubImage2D; }
+        else if (!strcmp(rname, "glBlitFramebuffer"))   { p_rd_real_glBlitFramebuffer   = pridroid_gl_proc_resolver(rname); w = vFiiiiiiiiuu; fn = (void*)rd_glBlitFramebuffer; }
+        else if (!strcmp(rname, "glTexSubImage2D"))     { p_rd_real_glTexSubImage2D     = pridroid_gl_proc_resolver(rname); w = vFuiiiiiuup; fn = (void*)rd_glTexSubImage2D; }
+        else if (!strcmp(rname, "glCompressedTexSubImage2D")) { p_rd_real_glCompressedTexSubImage2D = pridroid_gl_proc_resolver(rname); w = vFuiiiiiuip; fn = (void*)rd_glCompressedTexSubImage2D; }
+        else if (!strcmp(rname, "glTexSubImage3D"))     { p_rd_real_glTexSubImage3D     = pridroid_gl_proc_resolver(rname); w = vFuiiiiiiiuup; fn = (void*)rd_glTexSubImage3D; }
         // Installed ALWAYS (was diag-only): carries the shrink orphan probe — see rd_glGenerateMipmap.
-        else if (!strcmp(rname, "glGenerateMipmap"))    { p_rd_real_glGenerateMipmap    = rimdroid_gl_proc_resolver(rname); w = vFu;   fn = (void*)rd_glGenerateMipmap; }
-        // Diagnostic-only wrappers (op-log hunts): install ONLY under RIMDROID_GL_DIAG=1 — without
+        else if (!strcmp(rname, "glGenerateMipmap"))    { p_rd_real_glGenerateMipmap    = pridroid_gl_proc_resolver(rname); w = vFu;   fn = (void*)rd_glGenerateMipmap; }
+        // Diagnostic-only wrappers (op-log hunts): install ONLY under PRIDROID_GL_DIAG=1 — without
         // it the game gets the REAL entry points and pays zero extra per draw call.
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawArrays"))        { p_rd_real_glDrawArrays        = rimdroid_gl_proc_resolver(rname); w = vFuii;  fn = (void*)rd_glDrawArrays; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElements"))      { p_rd_real_glDrawElements      = rimdroid_gl_proc_resolver(rname); w = vFuiup; fn = (void*)rd_glDrawElements; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsBaseVertex")) { p_rd_real_glDrawElementsBaseVertex = rimdroid_gl_proc_resolver(rname); w = vFuiupi; fn = (void*)rd_glDrawElementsBaseVertex; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawArraysInstanced")) { p_rd_real_glDrawArraysInstanced = rimdroid_gl_proc_resolver(rname); w = vFuiii; fn = (void*)rd_glDrawArraysInstanced; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsInstanced")) { p_rd_real_glDrawElementsInstanced = rimdroid_gl_proc_resolver(rname); w = vFuiupi; fn = (void*)rd_glDrawElementsInstanced; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsInstancedBaseVertex")) { p_rd_real_glDrawElementsInstancedBaseVertex = rimdroid_gl_proc_resolver(rname); w = vFuiupii; fn = (void*)rd_glDrawElementsInstancedBaseVertex; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glDispatchCompute"))   { p_rd_real_glDispatchCompute   = rimdroid_gl_proc_resolver(rname); w = vFuuu; fn = (void*)rd_glDispatchCompute; }
-        else if (!strcmp(rname, "glActiveTexture"))  { p_rd_real_glActiveTexture  = (void(*)(uint32_t))rimdroid_gl_proc_resolver(rname); w = vFu; fn = (void*)rd_glActiveTexture; }
-        else if (!strcmp(rname, "glBindTexture"))    { p_rd_real_glBindTexture    = (void(*)(uint32_t,uint32_t))rimdroid_gl_proc_resolver(rname); w = vFuu; fn = (void*)rd_glBindTexture; }
-        else if (!strcmp(rname, "glDeleteTextures")) { p_rd_real_glDeleteTextures = (void(*)(int32_t,const uint32_t*))rimdroid_gl_proc_resolver(rname); w = vFip; fn = (void*)rd_glDeleteTextures; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawArrays"))        { p_rd_real_glDrawArrays        = pridroid_gl_proc_resolver(rname); w = vFuii;  fn = (void*)rd_glDrawArrays; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElements"))      { p_rd_real_glDrawElements      = pridroid_gl_proc_resolver(rname); w = vFuiup; fn = (void*)rd_glDrawElements; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsBaseVertex")) { p_rd_real_glDrawElementsBaseVertex = pridroid_gl_proc_resolver(rname); w = vFuiupi; fn = (void*)rd_glDrawElementsBaseVertex; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawArraysInstanced")) { p_rd_real_glDrawArraysInstanced = pridroid_gl_proc_resolver(rname); w = vFuiii; fn = (void*)rd_glDrawArraysInstanced; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsInstanced")) { p_rd_real_glDrawElementsInstanced = pridroid_gl_proc_resolver(rname); w = vFuiupi; fn = (void*)rd_glDrawElementsInstanced; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDrawElementsInstancedBaseVertex")) { p_rd_real_glDrawElementsInstancedBaseVertex = pridroid_gl_proc_resolver(rname); w = vFuiupii; fn = (void*)rd_glDrawElementsInstancedBaseVertex; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glDispatchCompute"))   { p_rd_real_glDispatchCompute   = pridroid_gl_proc_resolver(rname); w = vFuuu; fn = (void*)rd_glDispatchCompute; }
+        else if (!strcmp(rname, "glActiveTexture"))  { p_rd_real_glActiveTexture  = (void(*)(uint32_t))pridroid_gl_proc_resolver(rname); w = vFu; fn = (void*)rd_glActiveTexture; }
+        else if (!strcmp(rname, "glBindTexture"))    { p_rd_real_glBindTexture    = (void(*)(uint32_t,uint32_t))pridroid_gl_proc_resolver(rname); w = vFuu; fn = (void*)rd_glBindTexture; }
+        else if (!strcmp(rname, "glDeleteTextures")) { p_rd_real_glDeleteTextures = (void(*)(int32_t,const uint32_t*))pridroid_gl_proc_resolver(rname); w = vFip; fn = (void*)rd_glDeleteTextures; }
         // Installed only while the NOMIP probe is armed: outside it these are pure pass-throughs,
         // and every shim we hand Unity is one more thing between it and the driver.
         // Installed only while the readback probe is armed: it restores the game's own render
         // target and viewport from these, because a query cannot be trusted (see rd_glViewport).
-        else if (rd_nomip_on() && !strcmp(rname, "glTexParameteri")) { p_rd_real_glTexParameteri = (void(*)(uint32_t,uint32_t,int32_t))rimdroid_gl_proc_resolver(rname); w = vFuui; fn = (void*)rd_glTexParameteri; }
-        else if (rd_nomip_on() && !strcmp(rname, "glSamplerParameteri")) { p_rd_real_glSamplerParameteri = (void(*)(uint32_t,uint32_t,int32_t))rimdroid_gl_proc_resolver(rname); w = vFuui; fn = (void*)rd_glSamplerParameteri; }
-        else if (!strcmp(rname, "glFramebufferTexture2D")) { p_rd_real_glFramebufferTexture2D = (void(*)(uint32_t,uint32_t,uint32_t,uint32_t,int32_t))rimdroid_gl_proc_resolver(rname); w = vFuuuui; fn = (void*)rd_glFramebufferTexture2D; }
-        else if (!strcmp(rname, "glBindImageTexture"))     { p_rd_real_glBindImageTexture = (void(*)(uint32_t,uint32_t,int32_t,uint8_t,int32_t,uint32_t,uint32_t))rimdroid_gl_proc_resolver(rname); w = vFuuiCiuu; fn = (void*)rd_glBindImageTexture; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glUseProgram")) { p_rd_real_glUseProgram = rimdroid_gl_proc_resolver(rname); w = vFu; fn = (void*)rd_glUseProgram; }
-        else if (!strcmp(rname, "glShaderSource"))      { p_rd_real_glShaderSource      = rimdroid_gl_proc_resolver(rname); w = vFuipp; fn = (void*)rd_glShaderSource; }
-        else if (rd_gl_diag_on() && !strcmp(rname, "glAttachShader")) { p_rd_real_glAttachShader = rimdroid_gl_proc_resolver(rname); w = vFuu; fn = (void*)rd_glAttachShader; }
+        else if (rd_nomip_on() && !strcmp(rname, "glTexParameteri")) { p_rd_real_glTexParameteri = (void(*)(uint32_t,uint32_t,int32_t))pridroid_gl_proc_resolver(rname); w = vFuui; fn = (void*)rd_glTexParameteri; }
+        else if (rd_nomip_on() && !strcmp(rname, "glSamplerParameteri")) { p_rd_real_glSamplerParameteri = (void(*)(uint32_t,uint32_t,int32_t))pridroid_gl_proc_resolver(rname); w = vFuui; fn = (void*)rd_glSamplerParameteri; }
+        else if (!strcmp(rname, "glFramebufferTexture2D")) { p_rd_real_glFramebufferTexture2D = (void(*)(uint32_t,uint32_t,uint32_t,uint32_t,int32_t))pridroid_gl_proc_resolver(rname); w = vFuuuui; fn = (void*)rd_glFramebufferTexture2D; }
+        else if (!strcmp(rname, "glBindImageTexture"))     { p_rd_real_glBindImageTexture = (void(*)(uint32_t,uint32_t,int32_t,uint8_t,int32_t,uint32_t,uint32_t))pridroid_gl_proc_resolver(rname); w = vFuuiCiuu; fn = (void*)rd_glBindImageTexture; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glUseProgram")) { p_rd_real_glUseProgram = pridroid_gl_proc_resolver(rname); w = vFu; fn = (void*)rd_glUseProgram; }
+        else if (!strcmp(rname, "glShaderSource"))      { p_rd_real_glShaderSource      = pridroid_gl_proc_resolver(rname); w = vFuipp; fn = (void*)rd_glShaderSource; }
+        else if (rd_gl_diag_on() && !strcmp(rname, "glAttachShader")) { p_rd_real_glAttachShader = pridroid_gl_proc_resolver(rname); w = vFuu; fn = (void*)rd_glAttachShader; }
 
         if (fn && bridge) {
             void* b = (void*)AddBridge(bridge, w, fn, 0, rname);
-            printf_log(LOG_NONE, "RIMDROID GLSANITY shim installed for %s\n", rname);
+            printf_log(LOG_NONE, "PRIDROID GLSANITY shim installed for %s\n", rname);
             return b;
         }
     }
@@ -2595,15 +2595,15 @@ void* rimdroid_gl_getprocaddr(x64emu_t* emu, bridge_t* bridge, glprocaddress_t p
         else if (!strcmp(rname, "glGetQueryObjectui64v"))        { w = vFuup;   fn = (void*)rd_glGetQueryObjectui64v; }
         if (fn) {
             void* b = (void*)AddBridge(bridge, w, fn, 0, rname);
-            printf_log(LOG_NONE, "RIMDROID GetProcAddress zeroing-stub for '%s' => %p\n", rname, b);
+            printf_log(LOG_NONE, "PRIDROID GetProcAddress zeroing-stub for '%s' => %p\n", rname, b);
             return b;
         }
         // Everything else: a no-op (RAX=0, writes nothing) so a stray call does
         // not jump to 0x0.  Bridge created once and reused for every such name.
         static uintptr_t noop_bridge = 0;
         if (!noop_bridge)
-            noop_bridge = AddBridge(bridge, iFv, (void*)rimdroid_gl_noop, 0, "rimdroid_gl_noop");
-        printf_log(LOG_NONE, "RIMDROID GetProcAddress NULL for '%s' → no-op stub %p\n", rname, (void*)noop_bridge);
+            noop_bridge = AddBridge(bridge, iFv, (void*)pridroid_gl_noop, 0, "pridroid_gl_noop");
+        printf_log(LOG_NONE, "PRIDROID GetProcAddress NULL for '%s' → no-op stub %p\n", rname, (void*)noop_bridge);
         res = (void*)noop_bridge;
     }
     return res;
@@ -2613,7 +2613,7 @@ EXPORT void* my2_SDL_GL_GetProcAddress(x64emu_t* emu, void* name)
 {
     khint_t k;
     const char* rname = (const char*)name;
-    printf_log(LOG_NONE, "RIMDROID SDL_GL_GetProcAddress('%s')\n", rname?rname:"(null)");
+    printf_log(LOG_NONE, "PRIDROID SDL_GL_GetProcAddress('%s')\n", rname?rname:"(null)");
     // SDL_GL_GetProcAddress(NULL) must return NULL, not crash: getGLProcAddress()
     // hashes/strcmps the name and would dereference NULL.
     if (!rname)
@@ -2634,11 +2634,11 @@ EXPORT void* my2_SDL_GL_GetProcAddress(x64emu_t* emu, void* name)
     if (!strcmp(rname, "glTexSubImage2D")) {
         static uintptr_t b = 0;
         if (!b) b = AddBridge(my_lib->w.bridge, vFuiiiiiuup, (void*)rd_glTexSubImage2D, 0, "rd_glTexSubImage2D");
-        printf_log(LOG_NONE, "RIMDROID GetProcAddress('glTexSubImage2D') → instrumented %p\n", (void*)b);
+        printf_log(LOG_NONE, "PRIDROID GetProcAddress('glTexSubImage2D') → instrumented %p\n", (void*)b);
         return (void*)b;
     }
     glprocaddress_t pa = (glprocaddress_t)my->SDL_GL_GetProcAddress;
-    return rimdroid_gl_getprocaddr(emu, my_lib->w.bridge, pa, rname);
+    return pridroid_gl_getprocaddr(emu, my_lib->w.bridge, pa, rname);
 }
 
 #define nb_once 16
@@ -2838,43 +2838,43 @@ EXPORT void my2_SDL_FilterEvents(x64emu_t* emu, void* filter, void* userdata) {
 // ---- GL4ES / EGL intercepts -------------------------------------------------
 // These my2_ overrides replace the SDL2 GL context functions so that, when
 // Unity calls SDL_GL_CreateContext() (via box64's SDL2 wrapper), we return the
-// EGL context that rimdroid.c already created with GL4ES's ANativeWindow.
+// EGL context that pridroid.c already created with GL4ES's ANativeWindow.
 // Without this, SDL_VIDEODRIVER=dummy returns NULL from CreateContext and Unity
 // prints "Unable to find a supported OpenGL core profile".
 
-// EGL handles set up by rimdroid_init_gl4es_egl() before launch_rimworld_elf().
+// EGL handles set up by pridroid_init_gl4es_egl() before launch_rimworld_elf().
 // Declared __weak so the standalone box64 executable links without error
-// (symbols stay NULL there).  In librimdroidlinker.so the strong definitions
-// from librimdroid.so override these at runtime.
+// (symbols stay NULL there).  In libpridroidlinker.so the strong definitions
+// from libpridroid.so override these at runtime.
 extern __attribute__((weak)) void* g_egl_display;
 extern __attribute__((weak)) void* g_egl_surface;
 extern __attribute__((weak)) void* g_egl_context;
 
-// ZINK_ZFA renderer: ZFA context created by rimdroid.c in the parent (Zink over
+// ZINK_ZFA renderer: ZFA context created by pridroid.c in the parent (Zink over
 // Vulkan/Turnip).  When g_zfa_context is set we route the GL context calls to
 // ZFA instead of EGL.  GL proc resolution already works via BOX64_LIBGL
-// (=libzfa.so) in rimdroid_gl_proc_resolver, so SDL_GL_GetProcAddress is
-// unchanged.  rimdroid_zfa_make_current/swap live in rimdroid.c (strong defs).
+// (=libzfa.so) in pridroid_gl_proc_resolver, so SDL_GL_GetProcAddress is
+// unchanged.  pridroid_zfa_make_current/swap live in pridroid.c (strong defs).
 extern __attribute__((weak)) void* g_zfa_context;
-extern __attribute__((weak)) int  rimdroid_zfa_make_current(void);
-extern __attribute__((weak)) void rimdroid_zfa_swap(void);
-extern __attribute__((weak)) int  rimdroid_zfa_release_current(void);
+extern __attribute__((weak)) int  pridroid_zfa_make_current(void);
+extern __attribute__((weak)) void pridroid_zfa_swap(void);
+extern __attribute__((weak)) int  pridroid_zfa_release_current(void);
 
 // RD_SOFTPIPE renderer: OSMesa (CPU softpipe) OFFSCREEN context created by
-// rimdroid.c (rimdroid_init_osmesa). g_osmesa_context!=NULL selects the software
+// pridroid.c (pridroid_init_osmesa). g_osmesa_context!=NULL selects the software
 // path in the my2_SDL_GL_* handlers below. Unlike ZFA (which auto-presents via
 // its kopper/Vulkan swapchain), OSMesa has no winsys, so my2_SDL_GL_SwapWindow
-// MUST call rimdroid_osmesa_swap() to blit the CPU buffer to the ANativeWindow —
+// MUST call pridroid_osmesa_swap() to blit the CPU buffer to the ANativeWindow —
 // it is the one and only present path for softpipe. make_current binds the
-// context + buffer to the calling thread. Both live in rimdroid.c (strong defs).
+// context + buffer to the calling thread. Both live in pridroid.c (strong defs).
 extern __attribute__((weak)) void* g_osmesa_context;
-extern __attribute__((weak)) int  rimdroid_osmesa_make_current(void);
-extern __attribute__((weak)) int  rimdroid_osmesa_make_current_ctx(void* ctx);
-extern __attribute__((weak)) void* rimdroid_osmesa_create_shared(void);
-extern __attribute__((weak)) void rimdroid_osmesa_swap(void);
+extern __attribute__((weak)) int  pridroid_osmesa_make_current(void);
+extern __attribute__((weak)) int  pridroid_osmesa_make_current_ctx(void* ctx);
+extern __attribute__((weak)) void* pridroid_osmesa_create_shared(void);
+extern __attribute__((weak)) void pridroid_osmesa_swap(void);
 
 // Lazy-open libEGL.so and cache the handle.
-static void* rimdroid_libegl(void) {
+static void* pridroid_libegl(void) {
     static void* h = NULL;
     if (!h) {
         h = dlopen("libEGL.so", RTLD_LAZY | RTLD_GLOBAL);
@@ -2884,8 +2884,8 @@ static void* rimdroid_libegl(void) {
 }
 
 // eglMakeCurrent(display, draw, read, ctx) — make our context current on this thread.
-static int rimdroid_egl_make_current(void) {
-    void* h = rimdroid_libegl();
+static int pridroid_egl_make_current(void) {
+    void* h = pridroid_libegl();
     if (!h || !g_egl_display || !g_egl_surface || !g_egl_context) return 0;
     typedef unsigned int (*fn_t)(void*, void*, void*, void*);
     fn_t fn = (fn_t)(uintptr_t)dlsym(h, "eglMakeCurrent");
@@ -2912,7 +2912,7 @@ static int      g_window_w = 2340, g_window_h = 1080;  // native default (overwr
 EXPORT uint32_t my2_SDL_GetWindowFlags(void* window) {
     uint32_t f = g_window_flags | RD_SDL_WINDOW_OPENGL | RD_SDL_WINDOW_SHOWN;
     static int n = 0;
-    if (n < 4) { n++; printf_log(LOG_NONE, "RIMDROID SDL_GetWindowFlags(win=%p) => 0x%x\n", window, f); }
+    if (n < 4) { n++; printf_log(LOG_NONE, "PRIDROID SDL_GetWindowFlags(win=%p) => 0x%x\n", window, f); }
     return f;
 }
 // SDL_GetWindowSize(window, w, h) → report the requested size (dummy window may
@@ -2921,7 +2921,7 @@ EXPORT void my2_SDL_GetWindowSize(void* window, int* w, int* h) {
     if (w) *w = g_window_w;
     if (h) *h = g_window_h;
     static int n = 0;
-    if (n < 4) { n++; printf_log(LOG_NONE, "RIMDROID SDL_GetWindowSize(win=%p) => %dx%d\n", window, g_window_w, g_window_h); }
+    if (n < 4) { n++; printf_log(LOG_NONE, "PRIDROID SDL_GetWindowSize(win=%p) => %dx%d\n", window, g_window_w, g_window_h); }
 }
 
 // TEST (2026-05-30): consistent 1024x768 + 60 Hz.  Keep size at 1024x768 (matches
@@ -2945,13 +2945,13 @@ EXPORT int my2_SDL_GetDesktopDisplayMode(int displayIndex, void* mode) {
     // Report what rd_fill_display_mode actually wrote. The old text said 1024x768 — a leftover from
     // the 2026-05-30 experiment that this code stopped doing months ago, and it cost a wrong
     // hypothesis during the 1.5 font hunt: the log claimed a fake desktop size the shim never sends.
-    if (n < 4) { n++; printf_log(LOG_NONE, "RIMDROID GetDesktopDisplayMode(%d) => %dx%d@60\n", displayIndex, g_window_w, g_window_h); }
+    if (n < 4) { n++; printf_log(LOG_NONE, "PRIDROID GetDesktopDisplayMode(%d) => %dx%d@60\n", displayIndex, g_window_w, g_window_h); }
     return 0;
 }
 EXPORT int my2_SDL_GetCurrentDisplayMode(int displayIndex, void* mode) {
     rd_fill_display_mode(mode);
     static int n = 0;
-    if (n < 4) { n++; printf_log(LOG_NONE, "RIMDROID GetCurrentDisplayMode(%d) => %dx%d@60\n", displayIndex, g_window_w, g_window_h); }
+    if (n < 4) { n++; printf_log(LOG_NONE, "PRIDROID GetCurrentDisplayMode(%d) => %dx%d@60\n", displayIndex, g_window_w, g_window_h); }
     return 0;
 }
 
@@ -2959,10 +2959,10 @@ EXPORT void* my2_SDL_CreateWindow(x64emu_t* emu, void* title, int x, int y, int 
     uint32_t stripped = flags & ~RD_SDL_WINDOW_OPENGL;
     g_window_flags = flags; g_window_w = w; g_window_h = h;   // report these back to Unity
     if (!g_real_sdl_createwindow) {
-        printf_log(LOG_NONE, "RIMDROID SDL_CreateWindow: no real fn captured!\n");
+        printf_log(LOG_NONE, "PRIDROID SDL_CreateWindow: no real fn captured!\n");
         return NULL;
     }
-    printf_log(LOG_NONE, "RIMDROID SDL_CreateWindow(flags=0x%x→0x%x) %dx%d\n", flags, stripped, w, h);
+    printf_log(LOG_NONE, "PRIDROID SDL_CreateWindow(flags=0x%x→0x%x) %dx%d\n", flags, stripped, w, h);
     return (void*)(uintptr_t)RunFunctionWithEmu(emu, 0, g_real_sdl_createwindow, 6,
         (uint64_t)(uintptr_t)title, (uint64_t)(int64_t)x, (uint64_t)(int64_t)y,
         (uint64_t)(int64_t)w, (uint64_t)(int64_t)h, (uint64_t)stripped);
@@ -3017,20 +3017,20 @@ EXPORT void* my2_SDL_GL_CreateContext(void* win) {
         if (!g_sp_primary_used) {
             ctx = g_osmesa_context;
             g_sp_primary_used = 1;
-        } else if (&rimdroid_osmesa_create_shared && rimdroid_osmesa_create_shared) {
-            ctx = rimdroid_osmesa_create_shared();
+        } else if (&pridroid_osmesa_create_shared && pridroid_osmesa_create_shared) {
+            ctx = pridroid_osmesa_create_shared();
         } else {
             ctx = g_osmesa_context;
         }
         if (!ctx) ctx = g_osmesa_context;
-        if (&rimdroid_osmesa_make_current_ctx && rimdroid_osmesa_make_current_ctx)
-            rimdroid_osmesa_make_current_ctx(ctx);
+        if (&pridroid_osmesa_make_current_ctx && pridroid_osmesa_make_current_ctx)
+            pridroid_osmesa_make_current_ctx(ctx);
         g_rd_ctx_current = ctx;
-        printf_log(LOG_NONE, "RIMDROID SDL_GL_CreateContext #%lu → OSMesa ctx %p win=%p tid=%ld — softpipe\n", g_cnt_create, ctx, win, (long)syscall(SYS_gettid));
+        printf_log(LOG_NONE, "PRIDROID SDL_GL_CreateContext #%lu → OSMesa ctx %p win=%p tid=%ld — softpipe\n", g_cnt_create, ctx, win, (long)syscall(SYS_gettid));
         return ctx;
     }
     if (&g_zfa_context && g_zfa_context) {
-        if (rimdroid_zfa_make_current) rimdroid_zfa_make_current();
+        if (pridroid_zfa_make_current) pridroid_zfa_make_current();
         // Hand back a DISTINCT opaque handle per call (all alias the one ZFA ctx).
         // Unity 2019 GLCore creates a 2nd (shared) context; returning the SAME
         // pointer twice (create=2) confused its context bookkeeping → endless
@@ -3038,12 +3038,12 @@ EXPORT void* my2_SDL_GL_CreateContext(void* win) {
         // bookkeeping consistent. They are opaque to Unity (compared/passed only).
         void* fake = (void*)((uintptr_t)g_zfa_context + (uintptr_t)(g_cnt_create * 0x10000UL));
         g_rd_ctx_current = fake;
-        printf_log(LOG_NONE, "RIMDROID SDL_GL_CreateContext #%lu → handle %p (ZFA %p) win=%p tid=%ld — MILESTONE reached\n", g_cnt_create, fake, g_zfa_context, win, (long)syscall(SYS_gettid));
+        printf_log(LOG_NONE, "PRIDROID SDL_GL_CreateContext #%lu → handle %p (ZFA %p) win=%p tid=%ld — MILESTONE reached\n", g_cnt_create, fake, g_zfa_context, win, (long)syscall(SYS_gettid));
         return fake;
     }
     if (g_egl_context) {
-        rimdroid_egl_make_current();
-        printf_log(LOG_NONE, "RIMDROID SDL_GL_CreateContext → EGL ctx %p (GL4ES) — MILESTONE reached\n", g_egl_context);
+        pridroid_egl_make_current();
+        printf_log(LOG_NONE, "PRIDROID SDL_GL_CreateContext → EGL ctx %p (GL4ES) — MILESTONE reached\n", g_egl_context);
         return g_egl_context;
     }
     // No renderer context set up; fall back to SDL.
@@ -3059,7 +3059,7 @@ EXPORT void* my2_SDL_GL_CreateContext(void* win) {
 EXPORT int my2_SDL_GL_MakeCurrent(void* win, void* ctx) {
     g_cnt_makecur++;
     (void)win;
-    printf_log(LOG_NONE, "RIMDROID SDL_GL_MakeCurrent(win=%p ctx=%p) tid=%ld zfa=%p egl=%p\n",
+    printf_log(LOG_NONE, "PRIDROID SDL_GL_MakeCurrent(win=%p ctx=%p) tid=%ld zfa=%p egl=%p\n",
                win, ctx, (long)syscall(SYS_gettid), (&g_zfa_context)?g_zfa_context:NULL, g_egl_context);
     if (&g_osmesa_context && g_osmesa_context) {
         // OSMesaMakeCurrent rebinds the context (+ CPU buffer) to whatever thread
@@ -3072,10 +3072,10 @@ EXPORT int my2_SDL_GL_MakeCurrent(void* win, void* ctx) {
         // Bind the SPECIFIC context Unity asked for (ctx == a real OSMesa context handle we returned
         // from CreateContext) so its separate GL state is the one active. Fall back to the primary
         // binder if the per-ctx entry point isn't linked.
-        int ok = (&rimdroid_osmesa_make_current_ctx && rimdroid_osmesa_make_current_ctx)
-                 ? rimdroid_osmesa_make_current_ctx(ctx)
-                 : (rimdroid_osmesa_make_current && rimdroid_osmesa_make_current());
-        printf_log(LOG_NONE, "RIMDROID SDL_GL_MakeCurrent → OSMesa rebind ctx=%p %s\n", ctx, ok ? "OK" : "FAIL");
+        int ok = (&pridroid_osmesa_make_current_ctx && pridroid_osmesa_make_current_ctx)
+                 ? pridroid_osmesa_make_current_ctx(ctx)
+                 : (pridroid_osmesa_make_current && pridroid_osmesa_make_current());
+        printf_log(LOG_NONE, "PRIDROID SDL_GL_MakeCurrent → OSMesa rebind ctx=%p %s\n", ctx, ok ? "OK" : "FAIL");
         return ok ? 0 : -1;
     }
     if (&g_zfa_context && g_zfa_context) {
@@ -3091,46 +3091,46 @@ EXPORT int my2_SDL_GL_MakeCurrent(void* win, void* ctx) {
             // a single context legally migrates between threads.
             // NOTE: no-op (rel=-1) until a rebuilt libzfa exporting zfaReleaseCurrent
             // is installed — then this serializes ownership and should kill the loop.
-            int rel = (rimdroid_zfa_release_current) ? rimdroid_zfa_release_current() : -1;
+            int rel = (pridroid_zfa_release_current) ? pridroid_zfa_release_current() : -1;
             g_rd_ctx_current = NULL;
-            printf_log(LOG_NONE, "RIMDROID SDL_GL_MakeCurrent → ZFA unbind (release=%d)\n", rel);
+            printf_log(LOG_NONE, "PRIDROID SDL_GL_MakeCurrent → ZFA unbind (release=%d)\n", rel);
             return 0;
         }
         g_rd_ctx_current = ctx;   // track what Unity now considers the current context
-        int ok = (rimdroid_zfa_make_current && rimdroid_zfa_make_current());
-        printf_log(LOG_NONE, "RIMDROID SDL_GL_MakeCurrent → ZFA rebind %s\n", ok ? "OK" : "FAIL");
+        int ok = (pridroid_zfa_make_current && pridroid_zfa_make_current());
+        printf_log(LOG_NONE, "PRIDROID SDL_GL_MakeCurrent → ZFA rebind %s\n", ok ? "OK" : "FAIL");
         return ok ? 0 : -1;
     }
     if (&g_egl_context && g_egl_context) {
         if (!ctx) return 0;  // unbind no-op
-        return rimdroid_egl_make_current() ? 0 : -1;
+        return pridroid_egl_make_current() ? 0 : -1;
     }
     return my->SDL_GL_MakeCurrent(win, ctx);
 }
 
 // SDL_GL_SwapWindow(window) → present the frame (ZFA flush or eglSwapBuffers).
-// FPS overlay: librimdroid counts presented frames; the Java overlay polls it.
-// Weak so a box64 build without librimdroid still links (call is then skipped).
-extern __attribute__((weak)) void rimdroid_frame_tick(void);
+// FPS overlay: libpridroid counts presented frames; the Java overlay polls it.
+// Weak so a box64 build without libpridroid still links (call is then skipped).
+extern __attribute__((weak)) void pridroid_frame_tick(void);
 EXPORT void my2_SDL_GL_SwapWindow(void* win) {
     g_cnt_swap++;
-    static int rd_fpstick_off = -1;   // TEST toggle (env RIMDROID_NO_FPSTICK=1): skip the FPS frame counter
-    if (rd_fpstick_off < 0) rd_fpstick_off = getenv("RIMDROID_NO_FPSTICK") ? 1 : 0;
-    if (rimdroid_frame_tick && !rd_fpstick_off) rimdroid_frame_tick();   // count this present (any renderer)
+    static int rd_fpstick_off = -1;   // TEST toggle (env PRIDROID_NO_FPSTICK=1): skip the FPS frame counter
+    if (rd_fpstick_off < 0) rd_fpstick_off = getenv("PRIDROID_NO_FPSTICK") ? 1 : 0;
+    if (pridroid_frame_tick && !rd_fpstick_off) pridroid_frame_tick();   // count this present (any renderer)
     rd_upload_pace_frame_reset();   // pacing only guards SINGLE-frame upload bursts (see def)
     (void)win;
-    printf_log(LOG_NONE, "RIMDROID SDL_GL_SwapWindow(win=%p)\n", win);
+    printf_log(LOG_NONE, "PRIDROID SDL_GL_SwapWindow(win=%p)\n", win);
     if (&g_osmesa_context && g_osmesa_context) {
         // The ONLY present path for softpipe: glFinish + blit CPU buffer → surface.
-        if (rimdroid_osmesa_swap) rimdroid_osmesa_swap();
+        if (pridroid_osmesa_swap) pridroid_osmesa_swap();
         return;
     }
     if (&g_zfa_context && g_zfa_context) {
-        if (rimdroid_zfa_swap) rimdroid_zfa_swap();
+        if (pridroid_zfa_swap) pridroid_zfa_swap();
         return;
     }
     if (g_egl_display && g_egl_surface) {
-        void* h = rimdroid_libegl();
+        void* h = pridroid_libegl();
         if (h) {
             typedef unsigned int (*fn_t)(void*, void*);
             fn_t fn = (fn_t)(uintptr_t)dlsym(h, "eglSwapBuffers");
@@ -3141,9 +3141,9 @@ EXPORT void my2_SDL_GL_SwapWindow(void* win) {
 }
 
 // SDL_GL_DeleteContext(ctx) → no-op for our context (it outlives the game loop).
-// ===================== RimDroid injected input (Phase A) =====================
-// The injected-event ring lives in librimdroid.so (rimdroid.c) because box64 is a
-// SEPARATE .so and only the reverse (box64 weakly referencing rimdroid symbols)
+// ===================== PriDroid injected input (Phase A) =====================
+// The injected-event ring lives in libpridroid.so (pridroid.c) because box64 is a
+// SEPARATE .so and only the reverse (box64 weakly referencing pridroid symbols)
 // links. rd_input_poll() fills the caller's x86_64 SDL_Event (56 bytes) from the
 // ring and returns 1, else 0. We drain it before the real (dummy, empty) PollEvent.
 extern __attribute__((weak)) int rd_input_poll(unsigned char* out56);
@@ -3157,7 +3157,7 @@ EXPORT int my2_SDL_PollEvent(void* event) {
 
 // RimWorld polls the mouse position/buttons via SDL_GetMouseState for things like
 // selection-drag and right-click targeting. The real (dummy) SDL doesn't know our
-// injected cursor, so return it from rimdroid.c (weak rd_input_get_mouse).
+// injected cursor, so return it from pridroid.c (weak rd_input_get_mouse).
 extern __attribute__((weak)) unsigned int rd_input_get_mouse(int* x, int* y);
 EXPORT uint32_t my2_SDL_GetMouseState(void* x, void* y) {
     if (rd_input_get_mouse) return rd_input_get_mouse((int*)x, (int*)y);
@@ -3172,7 +3172,7 @@ EXPORT void my2_SDL_GL_DeleteContext(x64emu_t* emu, void* ctx) {
     // run). Lets us see whether DeleteContext calls keep growing (loop) or stop.
     static unsigned long rd_dc_count = 0;
     if ((++rd_dc_count % 20000UL) == 1UL)
-        printf_log(LOG_NONE, "RIMDROID DeleteCtx#%lu | create=%lu makecur=%lu swap=%lu getctx=%lu getwin=%lu setattr=%lu getattr=%lu\n",
+        printf_log(LOG_NONE, "PRIDROID DeleteCtx#%lu | create=%lu makecur=%lu swap=%lu getctx=%lu getwin=%lu setattr=%lu getattr=%lu\n",
                    rd_dc_count, g_cnt_create, g_cnt_makecur, g_cnt_swap, g_cnt_getctx, g_cnt_getwin, g_cnt_setattr, g_cnt_getattr);
     // On the VERY FIRST DeleteContext (= start of the teardown loop), dump the
     // guest stack so we can see which UnityPlayer.so function initiated it. We
@@ -3181,7 +3181,7 @@ EXPORT void my2_SDL_GL_DeleteContext(x64emu_t* emu, void* ctx) {
     // FindElfAddress), naming it with getAddrFunctionName(). Runs exactly once.
     if (rd_dc_count == 1UL) {
         long rd_tid = (long)syscall(SYS_gettid);
-        printf_log(LOG_NONE, "RIMDROID ===== DeleteCtx#1 GUEST STACK SCAN tid=%ld RIP=%p RSP=%p RBP=%p ctx=%p =====\n",
+        printf_log(LOG_NONE, "PRIDROID ===== DeleteCtx#1 GUEST STACK SCAN tid=%ld RIP=%p RSP=%p RBP=%p ctx=%p =====\n",
                    rd_tid, (void*)R_RIP, (void*)R_RSP, (void*)R_RBP, ctx);
         uintptr_t rd_sp = R_RSP;
         uintptr_t rd_lastval = 0;
@@ -3195,7 +3195,7 @@ EXPORT void my2_SDL_GL_DeleteContext(x64emu_t* emu, void* ctx) {
                        (unsigned)(i * 8), (void*)val, getAddrFunctionName(val));
             rd_printed++;
         }
-        printf_log(LOG_NONE, "RIMDROID ===== DeleteCtx#1 STACK SCAN END (%d entries) =====\n", rd_printed);
+        printf_log(LOG_NONE, "PRIDROID ===== DeleteCtx#1 STACK SCAN END (%d entries) =====\n", rd_printed);
     }
     // In ZFA/EGL mode WE own the GL context (created via zfaCreateContext /
     // eglCreateContext, NOT via SDL).  There is no real SDL GL context to
@@ -3238,7 +3238,7 @@ EXPORT int my2_SDL_GL_LoadLibrary(x64emu_t* emu, void* path) {
     int r = -999;
     if (g_real_sdl_gl_loadlibrary)
         r = (int)RunFunctionWithEmu(emu, 0, g_real_sdl_gl_loadlibrary, 1, (uint64_t)(uintptr_t)path);
-    printf_log(LOG_NONE, "RIMDROID SDL_GL_LoadLibrary(path=%p) => %d (real passthrough)\n", path, r);
+    printf_log(LOG_NONE, "PRIDROID SDL_GL_LoadLibrary(path=%p) => %d (real passthrough)\n", path, r);
     return r;
 }
 
@@ -3264,7 +3264,7 @@ EXPORT int my2_SDL_GL_GetAttribute(uint32_t attr, void* value) {
         case RD_GL_DOUBLEBUFFER:          *v = 1; break;
         default:                          *v = 0; break;
     }
-    printf_log(LOG_NONE, "RIMDROID SDL_GL_GetAttribute(%u) => %d\n", attr, *v);
+    printf_log(LOG_NONE, "PRIDROID SDL_GL_GetAttribute(%u) => %d\n", attr, *v);
     return 0;
 }
 

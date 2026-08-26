@@ -174,7 +174,7 @@ void* InternalMmap(void* addr, unsigned long length, int prot, int flags, int fd
     }
     void* ret = libc_mmap64(addr, length, prot, flags, fd, offset);
 #endif
-    // RimDroid: the sub-4GB zone is tiny and SHARED between Mono's MAP_32BIT JIT chunks and box64's
+    // PriDroid: the sub-4GB zone is tiny and SHARED between Mono's MAP_32BIT JIT chunks and box64's
     // own bricks/arenas. A misplaced/mis-sized operation there surfaces only much later as a guest
     // SEGV_MAPERR (seen as Mono "OOM" black screen on Snapdragon 7+ Gen2). ALWAYS log ops touching
     // that zone (a handful of lines per run); ra= lets addr2line attribute the caller.
@@ -186,7 +186,7 @@ void* InternalMmap(void* addr, unsigned long length, int prot, int flags, int fd
 
 int InternalMunmap(void* addr, unsigned long length)
 {
-    // RimDroid: log BEFORE the syscall so the line survives even if this unmap kills the process
+    // PriDroid: log BEFORE the syscall so the line survives even if this unmap kills the process
     // later (see mmap32 note above).
     if((uintptr_t)addr < 0x100000000ULL)
         printf_log(LOG_DEBUG, "[RD] munmap32: %p size=0x%lx (ra=%p)\n",

@@ -1529,7 +1529,7 @@ int initialize(int argc, const char **argv, char** env, x64emu_t** emulator, elf
     return 0;
 }
 
-// ---- RimDroid emulate() trace (file writes survive SIGKILL/_exit) -----------
+// ---- PriDroid emulate() trace (file writes survive SIGKILL/_exit) -----------
 #ifndef DYNAREC
 #include <fcntl.h>
 #endif
@@ -1551,7 +1551,7 @@ int emulate(x64emu_t* emu, elfheader_t* elf_header)
     atexit(endBox64);
     _EMTRACE("emulate: atexit registered");
 
-    // RimDroid: force a FRESH map reload right before the guest starts. loadProtectionFromMap() latches
+    // PriDroid: force a FRESH map reload right before the guest starts. loadProtectionFromMap() latches
     // via box64_mapclean and is otherwise a no-op here, but in the IN-PROCESS/relocatable path the native
     // half (ART boot image, scudo reserves, Turnip/zink GL libs loaded before box64) has mmap'd memory
     // box64 never tracked → its free-VA view (mapallmem) is stale → on a tight 39-bit address space

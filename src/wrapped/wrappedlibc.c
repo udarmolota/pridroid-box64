@@ -33,7 +33,7 @@ extern int _nl_msg_cat_cntr __attribute__((weak));
 #include <sys/stat.h>
 #include <sys/select.h>
 #include <unistd.h>
-#include <sched.h>      // RimDroid: sched_getaffinity + cpu_set_t for my_sched_getaffinity CPU cap
+#include <sched.h>      // PriDroid: sched_getaffinity + cpu_set_t for my_sched_getaffinity CPU cap
 #include <fcntl.h>
 #include <glob.h>
 #include <ctype.h>
@@ -112,8 +112,8 @@ static int rd_x11_trace_enabled(void)
 {
     static int v = -1;
     if(v < 0) {
-        const char* e = getenv("RIMDROID_XPOLL_TRACE");
-        v = (!e || e[0] != '0') && getenv("RIMDROID_X11_SOCKET_DIR") ? 1 : 0;
+        const char* e = getenv("PRIDROID_XPOLL_TRACE");
+        v = (!e || e[0] != '0') && getenv("PRIDROID_X11_SOCKET_DIR") ? 1 : 0;
     }
     return v;
 }
@@ -132,7 +132,7 @@ void rd_x11_diag_dump(const char* where)
 {
     if(!rd_x11_trace_enabled()) return;
     printf_log(LOG_NONE,
-        "RIMDROID: X11IO %s poll=%llu ready=%llu zero=%llu err=%llu "
+        "PRIDROID: X11IO %s poll=%llu ready=%llu zero=%llu err=%llu "
         "ppoll=%llu ready=%llu zero=%llu err=%llu "
         "read=%llu bytes=%llu eagain=%llu eof=%llu err=%llu "
         "recv=%llu bytes=%llu eagain=%llu eof=%llu err=%llu\n",
@@ -175,7 +175,7 @@ static void rd_log_poll_result(const char* name, const struct pollfd* fds, nfds_
         }
     }
     printf_log(LOG_NONE,
-               "RIMDROID: X11IO %s#%llu nfds=%llu timeout=%d ret=%d errno=%d %s\n",
+               "PRIDROID: X11IO %s#%llu nfds=%llu timeout=%d ret=%d errno=%d %s\n",
                name, *calls, (unsigned long long)nfds, timeout, ret,
                ret < 0 ? saved_errno : 0, states);
 }
@@ -195,7 +195,7 @@ static void rd_log_io_result(const char* name, int fd, size_t count, ssize_t ret
     else ++*err;
     if(!rd_x11_should_log(*calls) && ret >= 0) return;
     printf_log(LOG_NONE,
-               "RIMDROID: X11IO %s#%llu fd=%d count=%llu ret=%lld errno=%d\n",
+               "PRIDROID: X11IO %s#%llu fd=%d count=%llu ret=%lld errno=%d\n",
                name, *calls, fd, (unsigned long long)count, (long long)ret,
                ret < 0 ? saved_errno : 0);
 }
@@ -1822,7 +1822,7 @@ EXPORT int my___fxstat(x64emu_t *emu, int vers, int fd, void* buf)
 }
 EXPORT int my___fxstat64(x64emu_t *emu, int vers, int fd, void* buf) __attribute__((alias("my___fxstat")));
 
-// RimDroid: bionic has strdup()/getdelim() but NOT the glibc-internal __strdup/__getdelim aliases that a
+// PriDroid: bionic has strdup()/getdelim() but NOT the glibc-internal __strdup/__getdelim aliases that a
 // glibc x86_64 ELF (e.g. a .NET NativeAOT binary) pulls in via PLT — without these it aborts at load.
 // box64 shares the host heap, so the buffers strdup/getdelim allocate are safe for the guest to free.
 // (Routed via GO2 in wrappedlibc_private.h.) Helps any glibc ELF under box64, not just our patcher.
@@ -1861,7 +1861,7 @@ EXPORT int my___xmknodat(x64emu_t* emu, int v, int dirfd, char* path, uint32_t m
     return mknodat(dirfd, (const char*)path, mode, *dev);
 }
 
-// RIMDROID: MonoMod.Core (bundled in Harmony 2.3+) decides the guest OS is "Android" when
+// PRIDROID: MonoMod.Core (bundled in Harmony 2.3+) decides the guest OS is "Android" when
 // BOTH /data and /system/build.prop exist, then throws NotImplementedException from its
 // stubbed Android-x86_64 native-detour backend — stock Harmony cannot patch anything.
 // The guest is a plain Linux x86_64 program with no legitimate use for Android's
@@ -3881,7 +3881,7 @@ EXPORT const int32_t *my___ctype_tolower;
 EXPORT const int32_t *my___ctype_toupper;
 
 #ifdef ANDROID
-// RimDroid: bionic has NO glibc ctype tables (__ctype_b_loc & co), and its locale_t
+// PriDroid: bionic has NO glibc ctype tables (__ctype_b_loc & co), and its locale_t
 // is an opaque bionic struct. But glibc-built guests (e.g. the static libstdc++ inside
 // Unity 2022's UnityPlayer.so) index glibc-format ctype tables DIRECTLY:
 //     isdigit(c) == table[c] & 0x0800   (2-byte mask per char, indices -128..255)
@@ -3947,7 +3947,7 @@ EXPORT const unsigned short int** my___ctype_b_loc(x64emu_t* emu)       { (void)
 EXPORT const int32_t**            my___ctype_tolower_loc(x64emu_t* emu) { (void)emu; return &my___ctype_tolower; }
 EXPORT const int32_t**            my___ctype_toupper_loc(x64emu_t* emu) { (void)emu; return &my___ctype_toupper; }
 
-// RimDroid: glibc `struct __locale_struct` emulation. Guest glibc code does NOT treat
+// PriDroid: glibc `struct __locale_struct` emulation. Guest glibc code does NOT treat
 // locale_t as opaque — libstdc++'s classic_table() literally returns loc->__ctype_b
 // (offset 104). Forwarding newlocale() to bionic hands the guest a bionic object whose
 // bytes at glibc offsets are garbage → SIGSEGV on first isdigit() through a stream
@@ -3997,10 +3997,10 @@ EXPORT void* my_uselocale(x64emu_t* emu, void* loc)
     return old;
 }
 
-// RimDroid: X11 unix-socket path redirect. Guest libxcb/libX11 connect to the
+// PriDroid: X11 unix-socket path redirect. Guest libxcb/libX11 connect to the
 // hardcoded "/tmp/.X11-unix/X<n>", but Android apps cannot create /tmp — our
-// in-process X server (see Java com.rimdroid.xserver) listens under the app dir
-// instead ($RIMDROID_X11_SOCKET_DIR). Rewrite the sun_path transparently.
+// in-process X server (see Java com.pridroid.xserver) listens under the app dir
+// instead ($PRIDROID_X11_SOCKET_DIR). Rewrite the sun_path transparently.
 // glibc and bionic share the sockaddr_un layout (2-byte family + 108-byte path),
 // so the guest struct can be read directly.
 EXPORT int my_connect(x64emu_t* emu, int fd, void* addr, uint32_t addrlen)
@@ -4009,18 +4009,18 @@ EXPORT int my_connect(x64emu_t* emu, int fd, void* addr, uint32_t addrlen)
     struct sockaddr_un* un = (struct sockaddr_un*)addr;
     if (un && addrlen > 2 && un->sun_family == AF_UNIX
             && !strncmp(un->sun_path, "/tmp/.X11-unix/", 15)) {
-        const char* dir = getenv("RIMDROID_X11_SOCKET_DIR");
+        const char* dir = getenv("PRIDROID_X11_SOCKET_DIR");
         if (dir && *dir) {
             struct sockaddr_un redirected;
             memset(&redirected, 0, sizeof(redirected));
             redirected.sun_family = AF_UNIX;
             const char* base = strrchr(un->sun_path, '/');
             snprintf(redirected.sun_path, sizeof(redirected.sun_path), "%s%s", dir, base);
-            printf_log(LOG_INFO, "RIMDROID connect redirect: %s -> %s\n", un->sun_path, redirected.sun_path);
+            printf_log(LOG_INFO, "PRIDROID connect redirect: %s -> %s\n", un->sun_path, redirected.sun_path);
             int ret = connect(fd, (struct sockaddr*)&redirected, sizeof(redirected));
             if(ret == 0 && fd >= 0 && fd < RD_X11_FD_MAX) {
                 rd_x11_fd[fd] = 1;
-                printf_log(LOG_NONE, "RIMDROID: X11IO tracking fd=%d\n", fd);
+                printf_log(LOG_NONE, "PRIDROID: X11IO tracking fd=%d\n", fd);
             }
             return ret;
         }
@@ -4028,7 +4028,7 @@ EXPORT int my_connect(x64emu_t* emu, int fd, void* addr, uint32_t addrlen)
     return connect(fd, (struct sockaddr*)addr, addrlen);
 }
 
-// RimDroid: Android's bionic libc lacks bcmp and getprotobyname_r, which
+// PriDroid: Android's bionic libc lacks bcmp and getprotobyname_r, which
 // RimWorld 1.6's Mono (libmonobdwgc-2.0.so) imports.  As plain GO entries box64
 // tried to resolve them from native libc and failed ("Symbol not found" → PLT
 // relocation error → "Failed to load mono").  Provide them here (GOM) so box64
@@ -4196,12 +4196,12 @@ size_t last_mmap_0_len = 0;
 EXPORT void* my_getenv(x64emu_t* emu, void* name)
 {
     (void)emu;
-    // RimDroid: magic guest-side hook. A Harmony mod calls getenv("RIMDROID_FLUSH_JIT") right before
+    // PriDroid: magic guest-side hook. A Harmony mod calls getenv("PRIDROID_FLUSH_JIT") right before
     // the game serializes a save; we lazily invalidate EVERY translated block (MarkCRC → to_delete →
     // rebuilt from the now-stable source on next entry). Any torn translation born during the Mono JIT
     // storm dies before it can corrupt the save (the pawn-save corruption workaround). Lazy mode (2)
     // is thread-safe: running blocks finish normally and are replaced at their next entry.
-    if(name && !strcmp((const char*)name, "RIMDROID_FLUSH_JIT")) {
+    if(name && !strcmp((const char*)name, "PRIDROID_FLUSH_JIT")) {
         // Bounded to the sub-4GB zone: Mono's JIT code lives in MAP_32BIT RWX chunks there (all traces
         // agree), and that's where torn translations are born. A whole-48-bit walk hangs (the range
         // scan advances in small steps over empty terabytes) — learned the hard way.
@@ -4225,7 +4225,7 @@ EXPORT void* my_mmap64(x64emu_t* emu, void *addr, size_t length, int prot, int f
         ret = MAP_FAILED;
         e = EEXIST;
     }
-    // RimDroid: ALWAYS log guest mmap failures (a handful of lines at most). Diagnosing the
+    // PriDroid: ALWAYS log guest mmap failures (a handful of lines at most). Diagnosing the
     // device-specific OOM-at-Mono-init (39-bit-VA phones) needs the failing size/flags/errno, and
     // full BOX64_LOG=2 is unusable there: the log flood kills the in-process app before logs flush.
     if(ret==MAP_FAILED && emu) {
@@ -4234,7 +4234,7 @@ EXPORT void* my_mmap64(x64emu_t* emu, void *addr, size_t length, int prot, int f
         static int rd_mmfail_n = 0;
         if (rd_mmfail_n < 16) {
             rd_mmfail_n++;
-            printf_log(LOG_NONE, "RIMDROID MMAPFAIL hint=%p size=0x%zx (%.1f MB) prot=0x%x flags=0x%x fd=%d -> %s (%d) rip=%p(%s)\n",
+            printf_log(LOG_NONE, "PRIDROID MMAPFAIL hint=%p size=0x%zx (%.1f MB) prot=0x%x flags=0x%x fd=%d -> %s (%d) rip=%p(%s)\n",
                 addr, length, length/1048576.0, prot, flags, fd, strerror(e), e,
                 (void*)R_RIP, getAddrFunctionName(R_RIP));
             fflush(NULL);
@@ -4273,7 +4273,7 @@ EXPORT void* my_mmap64(x64emu_t* emu, void *addr, size_t length, int prot, int f
                 prot |= PROT_NEVERCLEAN;
             }
         }
-        // RimDroid: guest RWX MAP_32BIT regions are Mono's JIT-trampoline chunks — code is written,
+        // PriDroid: guest RWX MAP_32BIT regions are Mono's JIT-trampoline chunks — code is written,
         // executed, and REwritten in the same pages constantly (heavy SMC). The write-protect/fault/
         // unprotect dance for them breaks on some devices (Snapdragon 7+ Gen2: the SMC write-fault ends
         // up forwarded to Mono's handler as fatal, with box64's tracking out of sync with the kernel →
@@ -5392,7 +5392,7 @@ __attribute__((weak)) int dn_skipname(const unsigned char* ptr, const unsigned c
 #ifndef _SC_NPROCESSORS_CONF
 #define _SC_NPROCESSORS_CONF    83
 #endif
-// RimDroid: cap the affinity mask the guest sees to BOX64_MAXCPU.
+// PriDroid: cap the affinity mask the guest sees to BOX64_MAXCPU.
 // Mono's mono_cpu_count() (-> Environment.ProcessorCount) prefers CPU_COUNT(sched_getaffinity)
 // over sysconf(_SC_NPROCESSORS_ONLN); without capping HERE too, BOX64_MAXCPU does NOT reduce the
 // degree-of-parallelism of System.Threading.Tasks.Parallel. RimWorld 1.5 loads Defs with
@@ -5421,7 +5421,7 @@ EXPORT int my_sched_getaffinity(x64emu_t* emu, int pid, size_t cpusetsize, void*
                 else bytes[i>>3] &= (unsigned char)~(1u << (i & 7));
             }
         }
-        // RimDroid one-shot diagnostic: confirm the guest (Mono) actually uses this libc path
+        // PriDroid one-shot diagnostic: confirm the guest (Mono) actually uses this libc path
         // (vs the raw syscall #204 which would bypass us). [RD-MAXCPU] in the log => cap reaches Mono.
         static int rd_logged = 0;
         if(!rd_logged) { rd_logged = 1;

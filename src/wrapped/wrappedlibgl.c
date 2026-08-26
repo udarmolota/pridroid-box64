@@ -30,7 +30,7 @@ const char* libglName = "libGL.so.1";
 
 // FIXME: old wrapped* type of file, cannot use generated/wrappedlibgltypes.h
 
-// ---- RimDroid GLX -> ZFA bridge (RimWorld 1.6) ------------------------------
+// ---- PriDroid GLX -> ZFA bridge (RimWorld 1.6) ------------------------------
 // RimWorld 1.6 (Unity 2022.3, no SDL) creates its OpenGL Core context via GLX
 // directly: glXChooseVisual -> glXCreateContext -> glXMakeCurrent -> glXSwapBuffers.
 // On Android there is no host libGL/GLX, so box64 used to emulate the guest libGL
@@ -38,25 +38,25 @@ const char* libglName = "libGL.so.1";
 // core profile" -> Unity falls through to Vulkan (whose present path is gated/broken).
 // Instead we feed Unity the SAME ZFA context (real desktop GL Core over Mesa Zink ->
 // Turnip) that the 1.5 SDL path uses, by intercepting the glX entry points here and
-// routing them to zfa*. Present goes glXSwapBuffers -> rimdroid_zfa_swap -> ZFA's
+// routing them to zfa*. Present goes glXSwapBuffers -> pridroid_zfa_swap -> ZFA's
 // Vulkan swapchain -> our ANativeWindow; Unity never calls vkQueuePresentKHR, so the
 // broken Vulkan display/present gate is bypassed entirely.
 // Requires BOX64_LIBGL=libzfa.so (so box64 WRAPS libGL.so.1 host-side instead of
-// emulating the guest shim) + renderer=ZINK_ZFA (rimdroid.c creates g_zfa_context).
+// emulating the guest shim) + renderer=ZINK_ZFA (pridroid.c creates g_zfa_context).
 extern __attribute__((weak)) void* g_zfa_context;
-extern __attribute__((weak)) void* g_zfa_handle;   // libzfa.so handle from rimdroid.c (rimdroid linker namespace)
-extern __attribute__((weak)) int   rimdroid_zfa_make_current(void);
-extern __attribute__((weak)) void  rimdroid_zfa_swap(void);
-extern __attribute__((weak)) int   rimdroid_zfa_release_current(void);
-extern __attribute__((weak)) void  rimdroid_frame_tick(void);
+extern __attribute__((weak)) void* g_zfa_handle;   // libzfa.so handle from pridroid.c (pridroid linker namespace)
+extern __attribute__((weak)) int   pridroid_zfa_make_current(void);
+extern __attribute__((weak)) void  pridroid_zfa_swap(void);
+extern __attribute__((weak)) int   pridroid_zfa_release_current(void);
+extern __attribute__((weak)) void  pridroid_frame_tick(void);
 // Shared GL proc resolver (defined non-static in wrappedsdl2.c).
-extern void* rimdroid_gl_getprocaddr(x64emu_t* emu, bridge_t* bridge, glprocaddress_t pa, const char* rname);
+extern void* pridroid_gl_getprocaddr(x64emu_t* emu, bridge_t* bridge, glprocaddress_t pa, const char* rname);
 
 static int rd_zfa_active(void) { return (&g_zfa_context) && g_zfa_context; }
 
 // ---- EGL-translator variant of the same bridge (2026-08-09) ------------------
 // RimWorld 1.6 on a GL->GLES translator (MobileGlues / NG-GL4ES): same glX intercepts,
-// but the real context is the EGL one rimdroid.c created for the GL4ES plumbing
+// but the real context is the EGL one pridroid.c created for the GL4ES plumbing
 // (BOX64_LIBGL=libmobileglues.so etc.). The translators have no glX of their own
 // (MobileGlues exports ONLY glXGetProcAddress), so the ZFA-shaped bridge carries them:
 // create/MakeCurrent alias the single EGL context, present = eglSwapBuffers.
@@ -64,15 +64,15 @@ static int rd_zfa_active(void) { return (&g_zfa_context) && g_zfa_context; }
 // protocol (the 1.5 threaded A/B black-screened on exactly that), so getArgs forces
 // -force-gfx-direct whenever a translator is active.
 extern __attribute__((weak)) void* g_egl_context;
-extern __attribute__((weak)) int   rimdroid_eglt_make_current(void);
-extern __attribute__((weak)) int   rimdroid_eglt_release_current(void);
-extern __attribute__((weak)) void  rimdroid_eglt_swap(void);
-// Level-3 multi-context factory (rimdroid.c) — real EGL contexts per Unity logical context.
-extern __attribute__((weak)) void* rimdroid_eglt_create_shared(void);
-extern __attribute__((weak)) int   rimdroid_eglt_make_current_on(void* ctx, int with_window);
-extern __attribute__((weak)) void  rimdroid_eglt_destroy_ctx(void* ctx);
+extern __attribute__((weak)) int   pridroid_eglt_make_current(void);
+extern __attribute__((weak)) int   pridroid_eglt_release_current(void);
+extern __attribute__((weak)) void  pridroid_eglt_swap(void);
+// Level-3 multi-context factory (pridroid.c) — real EGL contexts per Unity logical context.
+extern __attribute__((weak)) void* pridroid_eglt_create_shared(void);
+extern __attribute__((weak)) int   pridroid_eglt_make_current_on(void* ctx, int with_window);
+extern __attribute__((weak)) void  pridroid_eglt_destroy_ctx(void* ctx);
 static int rd_eglt_active(void) { return !((&g_zfa_context) && g_zfa_context) && (&g_egl_context) && g_egl_context; }
-// RIMDROID_GLT_MULTICTX=1 (experimental, 2026-08-13): give every Unity GLX context its OWN real
+// PRIDROID_GLT_MULTICTX=1 (experimental, 2026-08-13): give every Unity GLX context its OWN real
 // EGL context (share group with the primary) instead of aliasing them all onto one. This is the
 // fix for the threaded-mode texture corruption (brief Level 3: zero upload collisions with TLS
 // scratch, red patches persist ⇒ the corruption is context-state bleed). Objects are shared by
@@ -82,9 +82,9 @@ static int rd_eglt_active(void) { return !((&g_zfa_context) && g_zfa_context) &&
 static int rd_eglt_multictx(void) {
     static int on = -1;
     if (on < 0) {
-        const char* e = getenv("RIMDROID_GLT_MULTICTX");
-        on = (e && e[0] == '1' && rimdroid_eglt_create_shared) ? 1 : 0;
-        if (on) printf_log(LOG_NONE, "RIMDROID GLT MULTICTX enabled: real EGL context per GLX context\n");
+        const char* e = getenv("PRIDROID_GLT_MULTICTX");
+        on = (e && e[0] == '1' && pridroid_eglt_create_shared) ? 1 : 0;
+        if (on) printf_log(LOG_NONE, "PRIDROID GLT MULTICTX enabled: real EGL context per GLX context\n");
     }
     return on;
 }
@@ -111,16 +111,16 @@ static int rd_glx_slot_of(void* fake) {
 static int rd_bridge_active(void) { return rd_zfa_active() || rd_eglt_active(); }
 static void* rd_bridge_ctx(void) { return rd_zfa_active() ? g_zfa_context : g_egl_context; }
 static int rd_bridge_make_current(void) {
-    if (rd_zfa_active()) return rimdroid_zfa_make_current ? rimdroid_zfa_make_current() : 0;
-    return rimdroid_eglt_make_current ? rimdroid_eglt_make_current() : 0;
+    if (rd_zfa_active()) return pridroid_zfa_make_current ? pridroid_zfa_make_current() : 0;
+    return pridroid_eglt_make_current ? pridroid_eglt_make_current() : 0;
 }
 static int rd_bridge_release_current(void) {
-    if (rd_zfa_active()) return rimdroid_zfa_release_current ? rimdroid_zfa_release_current() : -1;
-    return rimdroid_eglt_release_current ? rimdroid_eglt_release_current() : -1;
+    if (rd_zfa_active()) return pridroid_zfa_release_current ? pridroid_zfa_release_current() : -1;
+    return pridroid_eglt_release_current ? pridroid_eglt_release_current() : -1;
 }
 static void rd_bridge_swap(void) {
-    if (rd_zfa_active()) { if (rimdroid_zfa_swap) rimdroid_zfa_swap(); }
-    else if (rimdroid_eglt_swap) rimdroid_eglt_swap();
+    if (rd_zfa_active()) { if (pridroid_zfa_swap) pridroid_zfa_swap(); }
+    else if (pridroid_eglt_swap) pridroid_eglt_swap();
 }
 
 // GLX bridge state. g_glx_ctx_current = the opaque handle Unity currently holds
@@ -164,27 +164,27 @@ typedef struct { void* visual; unsigned long visualid; int screen; int depth;
 EXPORT void* my_glXChooseVisual(x64emu_t* emu, void* dpy, int screen, void* attribList)
 {
     (void)attribList;
-    printf_log(LOG_NONE, "RIMDROID glXChooseVisual ENTER screen=%d\n", screen); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXChooseVisual ENTER screen=%d\n", screen); fflush(NULL);
     if (!rd_bridge_active()) return my->glXChooseVisual ? my->glXChooseVisual(dpy, screen, attribList) : NULL;
     g_glx_display = dpy;
     rd_XVisualInfo* v = (rd_XVisualInfo*)calloc(1, sizeof(rd_XVisualInfo));
     if (v) { v->visualid = 0x21; v->screen = screen; v->depth = 24; v->c_class = 4 /*TrueColor*/;
              v->red_mask = 0xff0000; v->green_mask = 0x00ff00; v->blue_mask = 0x0000ff;
              v->colormap_size = 256; v->bits_per_rgb = 8; }
-    static int n=0; if(n<2){n++; printf_log(LOG_NONE, "RIMDROID glXChooseVisual -> dummy TrueColor24 %p (ZFA)\n", v);}
+    static int n=0; if(n<2){n++; printf_log(LOG_NONE, "PRIDROID glXChooseVisual -> dummy TrueColor24 %p (ZFA)\n", v);}
     return v;
 }
 
 static void* rd_glx_make_context(void* dpy, void* win_unused)
 {
     (void)win_unused;
-    printf_log(LOG_NONE, "RIMDROID glXCreateContext ENTER\n"); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXCreateContext ENTER\n"); fflush(NULL);
     g_glx_display = dpy;
     // Multi-context mode: the FIRST logical context takes the primary EGL context; every later
     // one gets its own real shared context. Aliasing mode: everything maps onto one (historic).
     void* real = rd_bridge_ctx();
     if (rd_eglt_active() && rd_eglt_multictx() && g_glx_create_n > 0) {
-        void* fresh = rimdroid_eglt_create_shared ? rimdroid_eglt_create_shared() : NULL;
+        void* fresh = pridroid_eglt_create_shared ? pridroid_eglt_create_shared() : NULL;
         if (fresh) real = fresh;   // creation failure falls back to aliasing the primary
     }
     if (!(rd_eglt_active() && rd_eglt_multictx()))
@@ -193,7 +193,7 @@ static void* rd_glx_make_context(void* dpy, void* win_unused)
     for (int i = 0; i < RD_GLX_MAX_CTX; i++)
         if (!g_glx_ctx_map[i].fake) { g_glx_ctx_map[i].fake = fake; g_glx_ctx_map[i].real = real; break; }
     g_glx_ctx_current = fake;
-    printf_log(LOG_NONE, "RIMDROID glXCreateContext #%lu -> handle %p (%s real=%p) — MILESTONE\n", g_glx_create_n, fake,
+    printf_log(LOG_NONE, "PRIDROID glXCreateContext #%lu -> handle %p (%s real=%p) — MILESTONE\n", g_glx_create_n, fake,
                rd_zfa_active() ? "ZFA" : "EGL-translator", real);
     return fake;
 }
@@ -220,17 +220,17 @@ EXPORT void my_glXDestroyContext(x64emu_t* emu, void* dpy, void* ctx)
                 void* real = g_glx_ctx_map[i].real;
                 g_glx_ctx_map[i].fake = NULL; g_glx_ctx_map[i].real = NULL;
                 if (real == g_glx_presenter) g_glx_presenter = NULL;
-                if (real != g_egl_context && rimdroid_eglt_destroy_ctx) rimdroid_eglt_destroy_ctx(real);
-                printf_log(LOG_NONE, "RIMDROID glXDestroyContext(%p) -> real %p destroyed\n", ctx, real);
+                if (real != g_egl_context && pridroid_eglt_destroy_ctx) pridroid_eglt_destroy_ctx(real);
+                printf_log(LOG_NONE, "PRIDROID glXDestroyContext(%p) -> real %p destroyed\n", ctx, real);
                 return;
             }
     }
     // Aliasing mode: never destroy the one shared context; just forget the alias.
-    printf_log(LOG_NONE, "RIMDROID glXDestroyContext(%p) -> no-op (aliased)\n", ctx);
+    printf_log(LOG_NONE, "PRIDROID glXDestroyContext(%p) -> no-op (aliased)\n", ctx);
 }
 EXPORT int my_glXMakeCurrent(x64emu_t* emu, void* dpy, uintptr_t drawable, void* ctx)
 {
-    printf_log(LOG_NONE, "RIMDROID glXMakeCurrent ENTER dpy=%p drawable=0x%lx ctx=%p tid=%ld\n", dpy, (unsigned long)drawable, ctx, (long)syscall(SYS_gettid)); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXMakeCurrent ENTER dpy=%p drawable=0x%lx ctx=%p tid=%ld\n", dpy, (unsigned long)drawable, ctx, (long)syscall(SYS_gettid)); fflush(NULL);
     if (!rd_bridge_active()) return my->glXMakeCurrent ? my->glXMakeCurrent(dpy, drawable, ctx) : 0;
     g_glx_display = dpy; g_glx_drawable = drawable;
     if (!ctx) {
@@ -240,7 +240,7 @@ EXPORT int my_glXMakeCurrent(x64emu_t* emu, void* dpy, uintptr_t drawable, void*
         int rel = rd_bridge_release_current();
         g_glx_ctx_current = NULL;
         g_glx_have_current = 0;
-        printf_log(LOG_NONE, "RIMDROID glXMakeCurrent(unbind) release=%d\n", rel);
+        printf_log(LOG_NONE, "PRIDROID glXMakeCurrent(unbind) release=%d\n", rel);
         return 1;
     }
     void* prev_fake = g_glx_ctx_current;
@@ -253,18 +253,18 @@ EXPORT int my_glXMakeCurrent(x64emu_t* emu, void* dpy, uintptr_t drawable, void*
         rd_glx_ctx_slot = rd_glx_slot_of(ctx);
         if (g_glx_have_current && pthread_equal(g_glx_current_tid, pthread_self()) && prev_fake == ctx)
             return 1;   // same logical context already bound on this thread
-        int ok = rimdroid_eglt_make_current_on ? rimdroid_eglt_make_current_on(real, real == g_glx_presenter) : 0;
+        int ok = pridroid_eglt_make_current_on ? pridroid_eglt_make_current_on(real, real == g_glx_presenter) : 0;
         if (ok) { g_glx_current_tid = pthread_self(); g_glx_have_current = 1; }
         else {
             // NEVER rate-limited: a refused bind leaves this thread with no context, so every GL
             // call it makes next is dropped on the floor. That is the signature we are hunting —
             // if the threaded red textures come from lost uploads, this line names the moment.
             g_glx_have_current = 0;
-            printf_log(LOG_NONE, "RIMDROID glXMakeCurrent(multictx) BIND FAILED fake=%p real=%p window=%d tid=%ld — thread now has NO context\n",
+            printf_log(LOG_NONE, "PRIDROID glXMakeCurrent(multictx) BIND FAILED fake=%p real=%p window=%d tid=%ld — thread now has NO context\n",
                        ctx, real, real == g_glx_presenter, (long)syscall(SYS_gettid));
             fflush(NULL);
         }
-        static int n2=0; if(ok && n2<8){n2++; printf_log(LOG_NONE, "RIMDROID glXMakeCurrent(multictx) fake=%p real=%p window=%d tid=%ld -> OK\n",
+        static int n2=0; if(ok && n2<8){n2++; printf_log(LOG_NONE, "PRIDROID glXMakeCurrent(multictx) fake=%p real=%p window=%d tid=%ld -> OK\n",
                                                          ctx, real, real == g_glx_presenter, (long)syscall(SYS_gettid));}
         return ok ? 1 : 0;
     }
@@ -273,12 +273,12 @@ EXPORT int my_glXMakeCurrent(x64emu_t* emu, void* dpy, uintptr_t drawable, void*
     // logical contexts rapidly around scene transitions, and re-running kopper's drawable
     // binding for every alternation churns swapchain state for nothing (device-lost suspect).
     if (g_glx_have_current && pthread_equal(g_glx_current_tid, pthread_self())) {
-        static int n=0; if(n<6){n++; printf_log(LOG_NONE, "RIMDROID glXMakeCurrent: alias switch, rebind skipped\n");}
+        static int n=0; if(n<6){n++; printf_log(LOG_NONE, "PRIDROID glXMakeCurrent: alias switch, rebind skipped\n");}
         return 1;
     }
     int ok = rd_bridge_make_current();
     if (ok) { g_glx_current_tid = pthread_self(); g_glx_have_current = 1; }
-    static int n=0; if(n<4){n++; printf_log(LOG_NONE, "RIMDROID glXMakeCurrent(drawable=0x%lx ctx=%p) -> %s %s\n", (unsigned long)drawable, ctx, rd_zfa_active()?"ZFA":"EGL-translator", ok?"OK":"FAIL");}
+    static int n=0; if(n<4){n++; printf_log(LOG_NONE, "PRIDROID glXMakeCurrent(drawable=0x%lx ctx=%p) -> %s %s\n", (unsigned long)drawable, ctx, rd_zfa_active()?"ZFA":"EGL-translator", ok?"OK":"FAIL");}
     return ok ? 1 : 0;
 }
 EXPORT void my_glXSwapBuffers(x64emu_t* emu, void* dpy, uintptr_t drawable)
@@ -290,7 +290,7 @@ EXPORT void my_glXSwapBuffers(x64emu_t* emu, void* dpy, uintptr_t drawable)
     static void* last_dpy = (void*)-1; static uintptr_t last_draw = (uintptr_t)-1; static long last_tid = -1;
     long tid = (long)syscall(SYS_gettid);
     if (dpy != last_dpy || drawable != last_draw || tid != last_tid) {
-        printf_log(LOG_NONE, "RIMDROID glXSwapBuffers CHANGE dpy=%p drawable=0x%lx tid=%ld (was dpy=%p drawable=0x%lx tid=%ld)\n",
+        printf_log(LOG_NONE, "PRIDROID glXSwapBuffers CHANGE dpy=%p drawable=0x%lx tid=%ld (was dpy=%p drawable=0x%lx tid=%ld)\n",
                    dpy, (unsigned long)drawable, tid, last_dpy, (unsigned long)last_draw, last_tid);
         fflush(NULL);
         last_dpy = dpy; last_draw = drawable; last_tid = tid;
@@ -301,14 +301,14 @@ EXPORT void my_glXSwapBuffers(x64emu_t* emu, void* dpy, uintptr_t drawable)
     if (rd_eglt_active() && rd_eglt_multictx()) {
         void* real = rd_glx_real_of(g_glx_ctx_current);
         if (real != g_glx_presenter) {
-            if (rimdroid_eglt_make_current_on && rimdroid_eglt_make_current_on(real, 1)) {
+            if (pridroid_eglt_make_current_on && pridroid_eglt_make_current_on(real, 1)) {
                 g_glx_presenter = real;
-                printf_log(LOG_NONE, "RIMDROID glXSwapBuffers: presenter -> real %p (tid=%ld)\n", real, tid);
+                printf_log(LOG_NONE, "PRIDROID glXSwapBuffers: presenter -> real %p (tid=%ld)\n", real, tid);
             } else {
                 // Also never rate-limited now: a present skipped here means the window surface is
                 // still owned by another thread's context — the same ownership conflict that a
                 // refused MakeCurrent reports, seen from the presenting side.
-                printf_log(LOG_NONE, "RIMDROID glXSwapBuffers: window busy elsewhere — present skipped (real=%p presenter=%p tid=%ld)\n",
+                printf_log(LOG_NONE, "PRIDROID glXSwapBuffers: window busy elsewhere — present skipped (real=%p presenter=%p tid=%ld)\n",
                            real, g_glx_presenter, tid);
                 fflush(NULL);
                 return;
@@ -321,10 +321,10 @@ EXPORT void my_glXSwapBuffers(x64emu_t* emu, void* dpy, uintptr_t drawable)
         int ok = rd_bridge_make_current();
         if (ok) { g_glx_current_tid = pthread_self(); g_glx_have_current = 1; }
         static int n = 0;
-        if (n < 8) { n++; printf_log(LOG_NONE, "RIMDROID glXSwapBuffers: rebind on tid=%ld -> %s\n", tid, ok?"OK":"FAIL"); }
+        if (n < 8) { n++; printf_log(LOG_NONE, "PRIDROID glXSwapBuffers: rebind on tid=%ld -> %s\n", tid, ok?"OK":"FAIL"); }
         if (!ok) return;   // no context -> flushing would crash; skip this present
     }
-    if (rimdroid_frame_tick) rimdroid_frame_tick();
+    if (pridroid_frame_tick) pridroid_frame_tick();
     {   // per-frame pacing reset (see rd_upload_pace_frame_reset in wrappedsdl2.c)
         extern void rd_upload_pace_frame_reset(void);
         rd_upload_pace_frame_reset();
@@ -355,7 +355,7 @@ EXPORT uintptr_t my_glXGetCurrentDrawable(x64emu_t* emu)
 }
 EXPORT int my_glXQueryVersion(x64emu_t* emu, void* dpy, void* major, void* minor)
 {
-    printf_log(LOG_NONE, "RIMDROID glXQueryVersion ENTER\n"); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXQueryVersion ENTER\n"); fflush(NULL);
     if (!rd_bridge_active()) return my->glXQueryVersion ? my->glXQueryVersion(dpy, major, minor) : 0;
     if (major) *(int*)major = 1;
     if (minor) *(int*)minor = 4;
@@ -363,7 +363,7 @@ EXPORT int my_glXQueryVersion(x64emu_t* emu, void* dpy, void* major, void* minor
 }
 EXPORT int my_glXQueryExtension(x64emu_t* emu, void* dpy, void* errorBase, void* eventBase)
 {
-    printf_log(LOG_NONE, "RIMDROID glXQueryExtension ENTER dpy=%p errBase=%p evtBase=%p\n", dpy, errorBase, eventBase); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXQueryExtension ENTER dpy=%p errBase=%p evtBase=%p\n", dpy, errorBase, eventBase); fflush(NULL);
     if (!rd_bridge_active()) return my->glXQueryExtension ? my->glXQueryExtension(dpy, errorBase, eventBase) : 0;
     // NOTE (root cause of the 2026-07-09 corruption saga): these GOM bridges were first declared
     // WITHOUT the E in their wrapper signatures (vFpL instead of vFEpL etc.), so the guest args
@@ -376,7 +376,7 @@ EXPORT int my_glXQueryExtension(x64emu_t* emu, void* dpy, void* errorBase, void*
 }
 EXPORT void* my_glXQueryExtensionsString(x64emu_t* emu, void* dpy, int screen)
 {
-    printf_log(LOG_NONE, "RIMDROID glXQueryExtensionsString ENTER\n"); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXQueryExtensionsString ENTER\n"); fflush(NULL);
     if (!rd_bridge_active()) return my->glXQueryExtensionsString ? my->glXQueryExtensionsString(dpy, screen) : (void*)"";
     (void)dpy; (void)screen;
     return (void*)"";
@@ -384,20 +384,20 @@ EXPORT void* my_glXQueryExtensionsString(x64emu_t* emu, void* dpy, int screen)
 // GLX name tokens: GLX_VENDOR=1, GLX_VERSION=2, GLX_EXTENSIONS=3.
 EXPORT void* my_glXGetClientString(x64emu_t* emu, void* dpy, int name)
 {
-    printf_log(LOG_NONE, "RIMDROID glXGetClientString ENTER name=%d\n", name); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXGetClientString ENTER name=%d\n", name); fflush(NULL);
     if (!rd_bridge_active()) return my->glXGetClientString ? my->glXGetClientString(dpy, name) : (void*)"";
     (void)dpy;
     if (name == 2) return (void*)"1.4";        // GLX_VERSION
-    if (name == 1) return (void*)"RimDroid";   // GLX_VENDOR
+    if (name == 1) return (void*)"PriDroid";   // GLX_VENDOR
     return (void*)"";                          // GLX_EXTENSIONS / other
 }
 EXPORT void* my_glXQueryServerString(x64emu_t* emu, void* dpy, int screen, int name)
 {
-    printf_log(LOG_NONE, "RIMDROID glXQueryServerString ENTER name=%d\n", name); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXQueryServerString ENTER name=%d\n", name); fflush(NULL);
     if (!rd_bridge_active()) return my->glXQueryServerString ? my->glXQueryServerString(dpy, screen, name) : (void*)"";
     (void)dpy; (void)screen;
     if (name == 2) return (void*)"1.4";        // GLX_VERSION
-    if (name == 1) return (void*)"RimDroid";   // GLX_VENDOR
+    if (name == 1) return (void*)"PriDroid";   // GLX_VENDOR
     return (void*)"";                          // GLX_EXTENSIONS / other
 }
 EXPORT void my_glXQueryDrawable(x64emu_t* emu, void* dpy, uintptr_t drawable, int attribute, void* value)
@@ -408,7 +408,7 @@ EXPORT void my_glXQueryDrawable(x64emu_t* emu, void* dpy, uintptr_t drawable, in
 }
 EXPORT int my_glXGetConfig(x64emu_t* emu, void* dpy, void* vis, int attrib, void* value)
 {
-    printf_log(LOG_NONE, "RIMDROID glXGetConfig ENTER attrib=%d\n", attrib); fflush(NULL);
+    printf_log(LOG_NONE, "PRIDROID glXGetConfig ENTER attrib=%d\n", attrib); fflush(NULL);
     if (!rd_bridge_active()) return my->glXGetConfig ? my->glXGetConfig(dpy, vis, attrib, value) : 0;
     (void)dpy; (void)vis;
     if (!value) return 0;
@@ -428,7 +428,7 @@ EXPORT void* my_glXGetProcAddress(x64emu_t* emu, void* name)
 {
     const char* rname = (const char*)name;
     if (rd_bridge_active())
-        return rimdroid_gl_getprocaddr(emu, my_lib->w.bridge, NULL, rname);
+        return pridroid_gl_getprocaddr(emu, my_lib->w.bridge, NULL, rname);
     pFp_t fnc = getBridgeFnc2((void*)R_RIP);
     if(!fnc) fnc=my->glXGetProcAddress;
     return getGLProcAddress(emu, NULL, (void*)fnc, rname);
@@ -437,8 +437,8 @@ EXPORT void* my_glXGetProcAddressARB(x64emu_t* emu, void* name)
 {
     const char* rname = (const char*)name;
     if (rd_bridge_active()) {
-        printf_log(LOG_NONE, "RIMDROID glXGetProcAddressARB('%s')\n", rname?rname:"(null)"); fflush(NULL);
-        return rimdroid_gl_getprocaddr(emu, my_lib->w.bridge, NULL, rname);
+        printf_log(LOG_NONE, "PRIDROID glXGetProcAddressARB('%s')\n", rname?rname:"(null)"); fflush(NULL);
+        return pridroid_gl_getprocaddr(emu, my_lib->w.bridge, NULL, rname);
     }
     pFp_t fnc = getBridgeFnc2((void*)R_RIP);
     if(!fnc) fnc=my->glXGetProcAddressARB;
@@ -581,8 +581,8 @@ static void* find_get_blob_func_Fct(void* fct)
 }
 #undef SUPER
 
-// RimDroid: libzfa.so lives in the special "rimdroid" linker namespace (loaded by
-// rimdroid.c via linkernsbypass so Zink can find Turnip/libvulkan). A plain dlopen()
+// PriDroid: libzfa.so lives in the special "pridroid" linker namespace (loaded by
+// pridroid.c via linkernsbypass so Zink can find Turnip/libvulkan). A plain dlopen()
 // here — box64's default namespace — CANNOT find it ("library libGL.so not found" →
 // libGL emulated → our glX->ZFA bridge never fires → glXCreateContext NULL → Unity
 // exits "no OpenGL core profile"). So reuse the ALREADY-open g_zfa_handle when the ZFA
@@ -591,7 +591,7 @@ static void* find_get_blob_func_Fct(void* fct)
     if((&g_zfa_handle) && g_zfa_handle) {                                       \
         lib->w.lib = g_zfa_handle;                                              \
         lib->path = strdup("libzfa.so");                                        \
-        printf_log(LOG_INFO, "RIMDROID: libGL wrapper -> reuse g_zfa_handle %p (ZFA)\n", g_zfa_handle); \
+        printf_log(LOG_INFO, "PRIDROID: libGL wrapper -> reuse g_zfa_handle %p (ZFA)\n", g_zfa_handle); \
     } else if(BOX64ENV(libgl)) {                                                \
         lib->w.lib = dlopen(BOX64ENV(libgl), RTLD_LAZY | RTLD_GLOBAL);          \
         lib->path = strdup(BOX64ENV(libgl));                                    \

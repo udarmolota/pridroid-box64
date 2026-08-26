@@ -174,8 +174,8 @@ int FUNC(_init)(library_t* lib, box64context_t* box64)
 #endif
     {
 #ifndef STATICBUILD
-        // RimDroid: honour a host handle already set by PRE_INIT (e.g. libGL reusing
-        // the ZFA handle from the rimdroid linker namespace). Without this guard the
+        // PriDroid: honour a host handle already set by PRE_INIT (e.g. libGL reusing
+        // the ZFA handle from the pridroid linker namespace). Without this guard the
         // unconditional dlopen below clobbers PRE_INIT's assignment. Safe: lib->w.lib
         // is NULL on a fresh init, so normal libs still dlopen exactly as before.
         if(!lib->w.lib) lib->w.lib = dlopen(MAPNAME(Name), RTLD_LAZY | RTLD_GLOBAL);

@@ -381,10 +381,10 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
     // method (sub-4GB region) takes a low-address null-deref (= the NRE we chase), dump the guest
     // registers at the fault: rip = where dispatch LANDED, r10 = the IMT method-cookie that was
     // requested, rdi = this. Lets us tell r10-clobber (garbage r10) from thunk-misresolve (correct
-    // r10, wrong landing). Gated by env RIMDROID_DISPATCH_LOG, prints at LOG_NONE. Non-destructive.
+    // r10, wrong landing). Gated by env PRIDROID_DISPATCH_LOG, prints at LOG_NONE. Non-destructive.
     if(sig==X64_SIGSEGV && info) {
         static int rd_disp = -1;
-        if(rd_disp==-1) rd_disp = getenv("RIMDROID_DISPATCH_LOG")?1:0;
+        if(rd_disp==-1) rd_disp = getenv("PRIDROID_DISPATCH_LOG")?1:0;
         if(rd_disp && (uintptr_t)info->si_addr < 0x10000
            && R_RIP>=0x30000000ULL && R_RIP<0x40000000ULL) {
             printf_log(LOG_NONE, "[RD-DISP] rip=%p fault=%p rax=%p r10=%p r11=%p rdi=%p rsi=%p\n",
@@ -567,10 +567,10 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
         skip = 3;   // other signal can resume in dynarec
     }
     //TODO: SIGABRT generate what?
-    // RimDroid: force SIGSEGV forwarded to a guest handler to LOG_NONE so the RELIABLE
+    // PriDroid: force SIGSEGV forwarded to a guest handler to LOG_NONE so the RELIABLE
     // box64 fault RIP/RBP/RSP is visible even at BOX64_LOG=0 (Mono catches SIGSEGV for
     // implicit null-checks AND fatal crashes, then mangles its own backtrace — this line,
-    // printed BEFORE forwarding, is the trustworthy crash locator). Grep "RIMDROID SEGV".
+    // printed BEFORE forwarding, is the trustworthy crash locator). Grep "PRIDROID SEGV".
     // When the fault hit NATIVE code (e.g. inside libzfa via a bridge), the guest RIP only
     // names the bridge; log the real native PC + dladdr module/symbol to pinpoint it.
     if ((sig==X64_SIGSEGV || sig==X64_SIGABRT || sig==X64_SIGBUS) && ucntx) {
@@ -579,20 +579,20 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
         extern volatile int rd_glx_swap_phase;   // wrappedlibgl.c: 1=glFinish, 2=zfaFlushFront
         if (npc && dladdr((void*)npc, &dli) && dli.dli_fname) {
             const char* base = strrchr(dli.dli_fname, '/');
-            printf_log(LOG_NONE, "RIMDROID SEGV native pc=%p %s(%s+0x%lx) swap_phase=%d\n", (void*)npc,
+            printf_log(LOG_NONE, "PRIDROID SEGV native pc=%p %s(%s+0x%lx) swap_phase=%d\n", (void*)npc,
                        base?base+1:dli.dli_fname, dli.dli_sname?dli.dli_sname:"?",
                        (unsigned long)(npc - (uintptr_t)(dli.dli_saddr?dli.dli_saddr:dli.dli_fbase)),
                        rd_glx_swap_phase);
         } else {
-            printf_log(LOG_NONE, "RIMDROID SEGV native pc=%p (no dladdr) swap_phase=%d\n", (void*)npc, rd_glx_swap_phase);
+            printf_log(LOG_NONE, "PRIDROID SEGV native pc=%p (no dladdr) swap_phase=%d\n", (void*)npc, rd_glx_swap_phase);
         }
     }
-    // RimDroid: log the RAW kernel si_code (before any reclassification below) + RBX. si_code is the
+    // PriDroid: log the RAW kernel si_code (before any reclassification below) + RBX. si_code is the
     // decider for the SMC-backpatch crash hypothesis: a write to a PROT_DYNAREC page (prot=0x87) that
     // the kernel MISreports as SEGV_MAPERR(1) instead of SEGV_ACCERR(2) is a false-MAPERR that the fix
     // at ~L1106 must reclassify; si_code==2 here would mean it reached the SMC handler and failed
     // (a different bug). RBX because the observed fatal RIP (libmono+0x111610) is `lock cmpxchg [rbx-4]`.
-    printf_log((sig==10)?LOG_DEBUG:((sig==X64_SIGSEGV||sig==X64_SIGABRT||sig==X64_SIGBUS)?LOG_NONE:log_minimum), "RIMDROID SEGV Signal %d: si_addr=%p, si_code=%d, TRAPNO=%d, ERR=%d, RIP=%p(%s), RBP=%p, RSP=%p, RBX=%p, prot=%x, mmapped:%d\n", sig, (void*)info2->si_addr, info->si_code, sigcontext->uc_mcontext.gregs[X64_TRAPNO], sigcontext->uc_mcontext.gregs[X64_ERR],sigcontext->uc_mcontext.gregs[X64_RIP], getAddrFunctionName(sigcontext->uc_mcontext.gregs[X64_RIP]), (void*)sigcontext->uc_mcontext.gregs[X64_RBP], (void*)sigcontext->uc_mcontext.gregs[X64_RSP], (void*)sigcontext->uc_mcontext.gregs[X64_RBX], prot, mmapped);
+    printf_log((sig==10)?LOG_DEBUG:((sig==X64_SIGSEGV||sig==X64_SIGABRT||sig==X64_SIGBUS)?LOG_NONE:log_minimum), "PRIDROID SEGV Signal %d: si_addr=%p, si_code=%d, TRAPNO=%d, ERR=%d, RIP=%p(%s), RBP=%p, RSP=%p, RBX=%p, prot=%x, mmapped:%d\n", sig, (void*)info2->si_addr, info->si_code, sigcontext->uc_mcontext.gregs[X64_TRAPNO], sigcontext->uc_mcontext.gregs[X64_ERR],sigcontext->uc_mcontext.gregs[X64_RIP], getAddrFunctionName(sigcontext->uc_mcontext.gregs[X64_RIP]), (void*)sigcontext->uc_mcontext.gregs[X64_RBP], (void*)sigcontext->uc_mcontext.gregs[X64_RSP], (void*)sigcontext->uc_mcontext.gregs[X64_RBX], prot, mmapped);
     #ifdef DYNAREC
     if(sig==3)
         SerializeAllMapping();  // Signal Interupt: it's a good time to serialize the mappings if needed
@@ -843,7 +843,7 @@ extern int box64_exit_code;
 
 void my_box64signalhandler(int32_t sig, siginfo_t* info, void * ucntx)
 {
-    // --- RimDroid: per-signal file logging, GATED (RIMDROID_SIGLOG=1) ---------
+    // --- PriDroid: per-signal file logging, GATED (PRIDROID_SIGLOG=1) ---------
     // box64's normal bridge mechanism faults thousands of times (si_addr in the
     // 0x3b34xxxx bridge region, si_code=2) and handles each internally.  Logging
     // every one to signal_debug.log + crash_signal.log (open/write/close ×2 per
@@ -851,7 +851,7 @@ void my_box64signalhandler(int32_t sig, siginfo_t* info, void * ucntx)
     // is the real reason runs "hung"/crawled.  OFF by default; enable only to
     // capture a specific crash.  (The fatal-crash path still records sigsegv_fault.log.)
     static int rd_siglog = -1;
-    if (rd_siglog < 0) { const char* _e = getenv("RIMDROID_SIGLOG"); rd_siglog = (_e && _e[0]=='1') ? 1 : 0; }
+    if (rd_siglog < 0) { const char* _e = getenv("PRIDROID_SIGLOG"); rd_siglog = (_e && _e[0]=='1') ? 1 : 0; }
     if (rd_siglog) {
         const char* sname = "?";
         int raw_sig = sig;
@@ -944,13 +944,13 @@ void my_box64signalhandler(int32_t sig, siginfo_t* info, void * ucntx)
     int db_searched = 0;
     uintptr_t x64pc = (uintptr_t)-1;
     x64pc = R_RIP;
-    // --- RimDroid: log x86_64 RIP into signal_debug.log — GATED (RIMDROID_SIGLOG=1)
+    // --- PriDroid: log x86_64 RIP into signal_debug.log — GATED (PRIDROID_SIGLOG=1)
     // This fires on EVERY signal; box64's lazy-bridge mechanism throws thousands of
     // SIGSEGVs during init, so writing each one (open/write/close) wrote ~16 MB/run
     // and slowed every launch to a crawl ("hangs").  Default OFF.
     {
         static int rd_riplog = -1;
-        if (rd_riplog < 0) { const char* _e = getenv("RIMDROID_SIGLOG"); rd_riplog = (_e && _e[0]=='1') ? 1 : 0; }
+        if (rd_riplog < 0) { const char* _e = getenv("PRIDROID_SIGLOG"); rd_riplog = (_e && _e[0]=='1') ? 1 : 0; }
         if (rd_riplog) {
             const char* home2 = getenv("HOME");
             char path2[512];
@@ -1108,7 +1108,7 @@ void my_box64signalhandler(int32_t sig, siginfo_t* info, void * ucntx)
     // immediate retry and won't fault again; if an addr recurs >=2 times we bail (leave MAPERR → forward to
     // guest), so a wrongly-grabbed fault is never swallowed. NOTE: the deep "phasic" save/crash bug is
     // SEPARATE (present even in baseline; reset by reboot) — this fix only addresses the false-MAPERR class.
-    // RimDroid 2026-07-18: split by certainty (Codex hypothesis + a710/SM6450 logs).
+    // PriDroid 2026-07-18: split by certainty (Codex hypothesis + a710/SM6450 logs).
     //  * PROT_DYNAREC/_R page: box64 OWNS it and write-protected it for SMC detection, and the guest
     //    prot still carries PROT_WRITE (0x87), so a write fault here is UNAMBIGUOUSLY self-modifying
     //    code and a MAPERR is definitely a kernel misreport — reclassify EVERY time, NO count limit.
@@ -1529,7 +1529,7 @@ dynarec_log(/*LOG_DEBUG*/LOG_INFO, "%04d|Repeated SIGSEGV with Access error on %
         }
     }
     relockMutex(Locks);
-    // --- RimDroid: log SIGSEGV fault info to dedicated file ---
+    // --- PriDroid: log SIGSEGV fault info to dedicated file ---
     if(sig == X64_SIGSEGV) {
         const char* _sh = getenv("HOME");
         char _sp[512];
@@ -1559,15 +1559,15 @@ dynarec_log(/*LOG_DEBUG*/LOG_INFO, "%04d|Repeated SIGSEGV with Access error on %
     }
 }
 
-// RimDroid: async-signal-safe trace for Mono Boehm-GC stop-the-world signals
+// PriDroid: async-signal-safe trace for Mono Boehm-GC stop-the-world signals
 // (SIG_SUSPEND=SIGPWR/30, SIG_THR_RESTART=SIGXCPU/24).  Writes to $HOME/gc_signal.log.
 static void rd_gctrace(int sig, const char* what) {
     if (sig != X64_SIGPWR && sig != X64_SIGXCPU) return;
     // Off by default: this writes a file per GC signal (thousands during a
-    // GC-heavy load) and badly slows the run.  Enable with RIMDROID_GCTRACE=1
+    // GC-heavy load) and badly slows the run.  Enable with PRIDROID_GCTRACE=1
     // only for diagnosing the GC suspend/restart handshake.
     static int en = -1;
-    if (en < 0) { const char* e = getenv("RIMDROID_GCTRACE"); en = (e && e[0]=='1') ? 1 : 0; }
+    if (en < 0) { const char* e = getenv("PRIDROID_GCTRACE"); en = (e && e[0]=='1') ? 1 : 0; }
     if (!en) return;
     const char* home = getenv("HOME");
     char path[512];
@@ -1654,9 +1654,9 @@ EXPORT sighandler_t my_sysv_signal(x64emu_t* emu, int signum, sighandler_t handl
 int EXPORT my_sigaction(x64emu_t* emu, int signum, const x64_sigaction_t *act, x64_sigaction_t *oldact)
 {
     printf_log(LOG_DEBUG, "Sigaction(signum=%d, act=%p(f=%p, flags=0x%x), old=%p)\n", signum, act, act?act->_u._sa_handler:NULL, act?act->sa_flags:0, oldact);
-    // RimDroid: trace Boehm-GC suspend/restart handler registration (gated).
+    // PriDroid: trace Boehm-GC suspend/restart handler registration (gated).
     static int rd_reg_en = -1;
-    if (rd_reg_en < 0) { const char* e = getenv("RIMDROID_GCTRACE"); rd_reg_en = (e && e[0]=='1') ? 1 : 0; }
+    if (rd_reg_en < 0) { const char* e = getenv("PRIDROID_GCTRACE"); rd_reg_en = (e && e[0]=='1') ? 1 : 0; }
     if (rd_reg_en && (signum == X64_SIGPWR || signum == X64_SIGXCPU)) {
         const char* home = getenv("HOME");
         char path[512];

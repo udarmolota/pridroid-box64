@@ -56,7 +56,7 @@ if(TERMUX)
 endif()
 
 # Hack: limit the optimization level for some platforms.
-# RimDroid: build box64 at -O0 on Android. At -O1 the dynarec miscompiles a Mono
+# PriDroid: build box64 at -O0 on Android. At -O1 the dynarec miscompiles a Mono
 # managed->native dispatch: the very first Assembly.GetTypes returns garbage ->
 # NullReferenceException in Verse.XmlInheritance at startup (SIGSEGV in libmonobdwgc),
 # same family as the disappearing-colonists / save corruption. The -O0 debug build is
@@ -439,7 +439,7 @@ set(ELFLOADER_SRC
     "${BOX64_ROOT}/src/main.c"
     "${BOX64_ROOT}/src/test.c"
     "${BOX64_ROOT}/src/core.c"
-    # RimDroid: S3TC->ETC2 encoder. Deliberately NOT in the WRAPPEDS list (that list feeds the
+    # PriDroid: S3TC->ETC2 encoder. Deliberately NOT in the WRAPPEDS list (that list feeds the
     # wrapper generator, which demands a *_private.h per entry) — it is a plain helper TU that
     # only wrappedsdl2.c calls. Gets per-file -O2 (set right below the ELFLOADER_SRC list — it
     # must come AFTER BOX64_ROOT is defined; keyed on the path, an early empty prefix won't match).
