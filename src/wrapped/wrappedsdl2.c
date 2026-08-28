@@ -84,6 +84,48 @@ static const char* rd_gl_legacy_core_alias(const char* name)
     return NULL;
 }
 
+// ---- glGetString(GL_EXTENSIONS) augmentation for the translator path -------------------------
+// GLee-era games (Prison Architect) decide what the driver can do by scanning the extension
+// STRING for legacy names. MobileGlues implements FBOs etc. but advertises modern names only,
+// so the game concluded "no framebuffer objects", OffscreenBuffer::New() returned NULL and the
+// caller dereferenced it (VisibilitySystem::SetupVisibilitySystem, guest 0xd15d87). Append the
+// legacy aliases for capabilities the translator really provides; the matching function-name
+// aliasing is rd_gl_legacy_core_alias above. Built once; the translator's extension set is
+// static for the life of the process.
+static const char* (*rd_real_glGetString_fn)(unsigned int) = NULL;
+static const char* rd_gl_extensions_augment(const char* real)
+{
+    static char* aug = NULL;
+    if (aug) return aug;
+    static const char* want[] = {
+        "GL_EXT_framebuffer_object", "GL_ARB_framebuffer_object",
+        "GL_EXT_framebuffer_blit", "GL_EXT_framebuffer_multisample",
+        "GL_ARB_texture_non_power_of_two", NULL };
+    size_t extra = 0;
+    for (int i = 0; want[i]; ++i)
+        if (!strstr(real, want[i])) extra += strlen(want[i]) + 1;
+    if (!extra) { aug = (char*)real; return aug; }
+    aug = (char*)box_malloc(strlen(real) + extra + 1);
+    strcpy(aug, real);
+    for (int i = 0; want[i]; ++i)
+        if (!strstr(real, want[i])) { strcat(aug, " "); strcat(aug, want[i]); }
+    printf_log(LOG_NONE, "PRIDROID GL: translator extension string augmented (+%zu bytes of legacy aliases)\n", extra);
+    return aug;
+}
+static const char* rd_glGetString_wrap(unsigned int name)
+{
+    const char* s = rd_real_glGetString_fn ? rd_real_glGetString_fn(name) : NULL;
+    if (name != 0x1F03 /*GL_EXTENSIONS*/ || !s) return s;
+    return rd_gl_extensions_augment(s);
+}
+// Direct-call path: wrappedlibgl's my_glGetString hands the REAL result here; augment only when
+// the translator resolved GL (g_gl4es_host_handle) - ZFA/Mesa advertises everything itself.
+const char* rd_bridge_augment_glGetString(unsigned int name, const char* real)
+{
+    if (name != 0x1F03 || !real || !g_gl4es_host_handle) return real;
+    return rd_gl_extensions_augment(real);
+}
+
 static void* pridroid_gl_proc_resolver(const char* name)
 {
     if (&g_osmesa_handle && g_osmesa_handle) {
@@ -142,6 +184,27 @@ static void* pridroid_gl_proc_resolver(const char* name)
         }
         if (gl4es_gpa)
             p = gl4es_gpa(name);
+    }
+    if (!p) {
+        // Legacy EXT name the translator does not export under that spelling: hand back the core
+        // entry point (same semantics for the FBO family). Keeps the promise made by the
+        // augmented extension string below.
+        const char* core_name = rd_gl_legacy_core_alias(name);
+        if (core_name) {
+            p = dlsym(g_gl4es_host_handle, core_name);
+            if (!p) {
+                void* (*gpa)(const char*) = (void*(*)(const char*))dlsym(g_gl4es_host_handle, "gl4es_GetProcAddress");
+                if (gpa) p = gpa(core_name);
+            }
+            if (p)
+                printf_log(LOG_NONE, "PRIDROID GL compatibility alias (translator): '%s' -> '%s' => %p\n",
+                           name, core_name, p);
+        }
+    }
+    if (p && !strcmp(name, "glGetString")) {
+        // Serve the augmenting wrapper so GLee's extension scan sees the legacy names.
+        rd_real_glGetString_fn = (const char* (*)(unsigned int))p;
+        p = (void*)rd_glGetString_wrap;
     }
     printf_log(LOG_DEBUG, "GL proc resolver('%s') handle=%p => %p\n", name, g_gl4es_host_handle, p);
     return p;

@@ -109,6 +109,17 @@ static int rd_glx_slot_of(void* fake) {
 }
 // One dispatch layer so every glX intercept below stays backend-agnostic.
 static int rd_bridge_active(void) { return rd_zfa_active() || rd_eglt_active(); }
+
+// The game calls glGetString directly (not only via glXGetProcAddress). Route the result through
+// the translator-path augmentation in wrappedsdl2.c so GLee's extension scan sees the legacy
+// capability names there too. No-op for ZFA/Mesa and for non-EXTENSIONS queries.
+extern const char* rd_bridge_augment_glGetString(unsigned int name, const char* real);
+EXPORT void* my_glGetString(x64emu_t* emu, uint32_t name)
+{
+    (void)emu;
+    const char* s = my->glGetString ? (const char*)my->glGetString(name) : NULL;
+    return (void*)rd_bridge_augment_glGetString(name, s);
+}
 static void* rd_bridge_ctx(void) { return rd_zfa_active() ? g_zfa_context : g_egl_context; }
 static int rd_bridge_make_current(void) {
     if (rd_zfa_active()) return pridroid_zfa_make_current ? pridroid_zfa_make_current() : 0;

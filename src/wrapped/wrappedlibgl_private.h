@@ -104,7 +104,7 @@ GO(glGetPixelMapfv, vFup)
 GO(glGetPixelMapuiv, vFup)
 GO(glGetPixelMapusv, vFup)
 GO(glGetPolygonStipple, vFp)
-GO(glGetString, pFu)
+GOM(glGetString, pFEu)  //%% translator path augments GL_EXTENSIONS - see my_glGetString
 GO(glGetTexEnvfv, vFuup)
 GO(glGetTexEnviv, vFuup)
 GO(glGetTexGendv, vFuup)

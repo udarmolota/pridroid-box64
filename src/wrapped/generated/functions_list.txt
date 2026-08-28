@@ -380,6 +380,7 @@
 #() LFpL
 #() LFpp
 #() pFEi
+#() pFEu
 #() pFEl
 #() pFEL
 #() pFEp
@@ -5953,6 +5954,8 @@ wrappedlibgl:
 - pFv:
   - glXGetCurrentContext
   - glXGetCurrentDisplay
+- pFu:
+  - glGetString
 - pFp:
   - glGetVkProcAddrNV
   - glXGetProcAddress

@@ -14,6 +14,7 @@
 typedef int32_t (*iFu_t)(uint32_t);
 typedef uintptr_t (*LFv_t)(void);
 typedef void* (*pFv_t)(void);
+typedef void* (*pFu_t)(uint32_t);
 typedef void* (*pFp_t)(void*);
 typedef void (*vFpL_t)(void*, uintptr_t);
 typedef void (*vFpp_t)(void*, void*);
@@ -36,6 +37,7 @@ typedef void* (*pFpppip_t)(void*, void*, void*, int32_t, void*);
 	GO(glXGetCurrentDrawable, LFv_t) \
 	GO(glXGetCurrentContext, pFv_t) \
 	GO(glXGetCurrentDisplay, pFv_t) \
+	GO(glGetString, pFu_t) \
 	GO(glGetVkProcAddrNV, pFp_t) \
 	GO(glXGetProcAddress, pFp_t) \
 	GO(glXGetProcAddressARB, pFp_t) \

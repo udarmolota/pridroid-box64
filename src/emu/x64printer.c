@@ -677,6 +677,8 @@ void x64Print(x64emu_t* emu, char* buff, size_t buffsz, const char* func, int ti
         snprintf(buff, buffsz, "%04d|%p: Calling %s(%" PRIp ", %" PRIp ")", tid, *(void**)(R_RSP), func, (void*)R_RDI, (void*)R_RSI);
     } else if (w == pFEi) {
         snprintf(buff, buffsz, "%04d|%p: Calling %s(%" PRIi32 ")", tid, *(void**)(R_RSP), func, (int32_t)R_RDI);
+    } else if (w == pFEu) {
+        snprintf(buff, buffsz, "%04d|%p: Calling %s(%" PRIu32 ")", tid, *(void**)(R_RSP), func, (uint32_t)R_RDI);
     } else if (w == pFEl) {
         snprintf(buff, buffsz, "%04d|%p: Calling %s(%" PRIi64 ")", tid, *(void**)(R_RSP), func, (intptr_t)R_RDI);
     } else if (w == pFEL) {
