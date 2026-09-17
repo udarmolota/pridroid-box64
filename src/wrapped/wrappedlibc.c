@@ -227,10 +227,31 @@ EXPORT int32_t my_ppoll(x64emu_t* emu, struct pollfd* fds, unsigned long nfds, v
     return ret;
 }
 
+// Linux clamps oversized read/write counts inside vfs_read (MAX_RW_COUNT = INT_MAX & PAGE_MASK),
+// so a guest passing a bogus size - a (size_t)-1 left over from a failed size query - simply gets
+// EFAULT back and carries on. bionic instead runs a FORTIFY check before the syscall and aborts
+// the entire process: "FORTIFY: read: count 18446744073709551615 > SSIZE_MAX". Seen in the wild on
+// Prison Architect's Jul-2021 build, which dies during world init where newer builds do not.
+// Clamping restores the behaviour the guest was written against.
+#define RD_MAX_RW_COUNT 0x7ffff000UL
+static size_t rd_clamp_rw_count(const char* who, int fd, size_t count)
+{
+    if (count <= RD_MAX_RW_COUNT) return count;
+    static int warned = 0;
+    if (!warned) {
+        warned = 1;
+        printf_log(LOG_NONE, "PRIDROID %s(fd=%d): guest asked for %zu bytes - clamping to %lu, as "
+                             "Linux does (bionic would abort the process on this)\n",
+                   who, fd, count, RD_MAX_RW_COUNT);
+    }
+    return RD_MAX_RW_COUNT;
+}
+
 EXPORT ssize_t my_read(x64emu_t* emu, int fd, void* buf, size_t count)
 {
     (void)emu;
     int watch = rd_x11_trace_enabled() && rd_x11_is_fd(fd);
+    count = rd_clamp_rw_count("read", fd, count);
     ssize_t ret = read(fd, buf, count);
     int saved = errno;
     if(watch) rd_log_io_result("read", fd, count, ret, saved, 0);
