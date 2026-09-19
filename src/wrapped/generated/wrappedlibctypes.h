@@ -107,6 +107,7 @@ typedef intptr_t (*lFippL_t)(int32_t, void*, void*, uintptr_t);
 typedef intptr_t (*lFuipp_t)(uint32_t, int32_t, void*, void*);
 typedef intptr_t (*lFppiS_t)(void*, void*, int32_t, void*);
 typedef intptr_t (*lFppLL_t)(void*, void*, uintptr_t, uintptr_t);
+typedef uintptr_t (*LFpLLS_t)(void*, uintptr_t, uintptr_t, void*);
 typedef void (*vFpiipV_t)(void*, int32_t, int32_t, void*, ...);
 typedef void (*vFpLLpp_t)(void*, uintptr_t, uintptr_t, void*, void*);
 typedef int32_t (*iFiipup_t)(int32_t, int32_t, void*, uint32_t, void*);
@@ -395,6 +396,7 @@ typedef int32_t (*iFpLpD_t)(void*, uintptr_t, void*, double);
 	GO(ptrace, lFuipp_t) \
 	GO(__getdelim, lFppiS_t) \
 	GO(__readlink_chk, lFppLL_t) \
+	GO(fread, LFpLLS_t) \
 	GO(argp_failure, vFpiipV_t) \
 	GO(qsort_r, vFpLLpp_t) \
 	GO(__xmknodat, iFiipup_t) \

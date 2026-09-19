@@ -258,6 +258,20 @@ EXPORT ssize_t my_read(x64emu_t* emu, int fd, void* buf, size_t count)
     errno = saved;
     return ret;
 }
+
+// The same abort reached through stdio. bionic's FILE hands its read callback an int, so an
+// fread() of 2 GiB or more wraps negative and arrives at read() as SIZE_MAX, where FORTIFY kills
+// the process; glibc just returns a short read at EOF. Prison Architect's Jul-2021 build does
+// exactly this during world init (BinaryFileReader::ReadBytes with a count of 0xffffffff), seen
+// on an Exynos 9825 once the non-PIE load was fixed. Clamp here as my_read does.
+EXPORT size_t my_fread(x64emu_t* emu, void* ptr, size_t size, size_t nmemb, FILE* stream)
+{
+    (void)emu;
+    if(size && nmemb > RD_MAX_RW_COUNT/size)
+        nmemb = rd_clamp_rw_count("fread", fileno(stream),
+                    (nmemb > SIZE_MAX/size) ? SIZE_MAX : size*nmemb) / size;
+    return fread(ptr, size, nmemb, stream);
+}
 EXPORT ssize_t my___read(x64emu_t* emu, int fd, void* buf, size_t count)
     __attribute__((alias("my_read")));
 
