@@ -2240,6 +2240,7 @@
 #() lFppLpL
 #() lFppLpp
 #() LFELppu
+#() LFEpLLS
 #() LFEpLpV
 #() LFEppLL
 #() LFEpppp
@@ -5813,6 +5814,8 @@ wrappedlibc:
   - __getdelim
 - lFppLL:
   - __readlink_chk
+- LFpLLS:
+  - fread
 - vFpiipV:
   - argp_failure
 - vFpLLpp:
